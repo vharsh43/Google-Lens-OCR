@@ -8,13 +8,13 @@ export const config = {
   
   // Processing options
   processing: {
-    // Rate limiting for Google API
-    batchSize: 5,              // Process 5 files per batch
-    batchDelay: 10000,         // Wait 10 seconds between batches
-    requestDelay: 2000,        // Wait 2 seconds between individual requests
+    // Rate limiting for Google API - Optimized settings
+    batchSize: 10,             // Start with 10 files per batch (dynamically adjustable)
+    batchDelay: 3000,          // Wait 3 seconds between batches (reduced from 10s)
+    requestDelay: 500,         // Wait 500ms between individual requests (reduced from 2s)
     
-    // Maximum concurrent OCR operations (reduced for rate limiting)
-    maxConcurrency: 1,         // Process one at a time to avoid rate limits
+    // Maximum concurrent OCR operations - Allow parallel processing
+    maxConcurrency: 3,         // Process up to 3 files concurrently
     
     // Retry attempts for failed operations
     maxRetries: 3,             // Increased retries for rate limit errors
@@ -40,7 +40,21 @@ export const config = {
     
     // Rate limit error handling
     rateLimitRetryMultiplier: 2.0,  // Multiply delay by this on rate limit errors
-    apiErrorCodes: ['RATE_LIMITED', 'QUOTA_EXCEEDED', 'TOO_MANY_REQUESTS']
+    apiErrorCodes: ['RATE_LIMITED', 'QUOTA_EXCEEDED', 'TOO_MANY_REQUESTS'],
+    
+    // Dynamic rate adjustment settings
+    dynamicRateAdjustment: {
+      enabled: true,                    // Enable dynamic rate adjustment
+      minBatchSize: 3,                  // Minimum batch size when scaling down
+      maxBatchSize: 20,                 // Maximum batch size when scaling up
+      minBatchDelay: 1000,              // Minimum delay between batches (1s)
+      maxBatchDelay: 15000,             // Maximum delay between batches (15s)
+      scaleUpThreshold: 0.95,           // Scale up if success rate > 95%
+      scaleDownThreshold: 0.80,         // Scale down if success rate < 80%
+      adjustmentInterval: 5,            // Adjust every 5 batches
+      conservativeMode: false,          // Start in aggressive mode
+      scalingFactor: 1.5                // Multiply/divide by this factor when scaling
+    }
   },
   
   // Output options

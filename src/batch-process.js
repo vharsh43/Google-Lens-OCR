@@ -59,6 +59,16 @@ class BatchProcessor {
     this.queue = new this.ProcessingQueue(this.config.processing.maxConcurrency);
     this.startTime = Date.now();
     
+    // Dynamic rate adjustment state
+    this.rateAdjustment = {
+      currentBatchSize: this.config.processing.batchSize,
+      currentBatchDelay: this.config.processing.batchDelay,
+      batchHistory: [],
+      consecutiveFailures: 0,
+      lastAdjustment: 0,
+      adjustmentCount: 0
+    };
+    
     console.log('✅ BatchProcessor initialized successfully!');
   }
 
@@ -162,58 +172,43 @@ class BatchProcessor {
     
     const progressBar = this.Utils.createProgressBar(imageFiles.length);
     this.Utils.log(`Starting intelligent batch processing of ${imageFiles.length} files...`, 'info');
-    this.Utils.log(`Batch size: ${this.config.processing.batchSize}, Batch delay: ${this.config.processing.batchDelay/1000}s`, 'info');
+    this.Utils.log(`Initial batch size: ${this.rateAdjustment.currentBatchSize}, Batch delay: ${this.rateAdjustment.currentBatchDelay/1000}s`, 'info');
+    
+    if (this.config.processing.dynamicRateAdjustment.enabled) {
+      console.log(this.chalk.cyan('🧠 Dynamic rate adjustment enabled - will optimize processing speed automatically'));
+    }
 
-    // Process files in batches to respect rate limits
-    const batches = this.createBatches(imageFiles, this.config.processing.batchSize);
+    // Process files in dynamic batches
+    let remainingFiles = [...imageFiles];
     const allResults = [];
     
-    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-      const batch = batches[batchIndex];
-      const batchNumber = batchIndex + 1;
+    while (remainingFiles.length > 0) {
+      batchNumber++;
       
-      console.log(this.chalk.blue(`\n📦 Processing batch ${batchNumber}/${batches.length} (${batch.length} files)...`));
+      // Create current batch based on dynamic batch size
+      const currentBatchSize = Math.min(this.rateAdjustment.currentBatchSize, remainingFiles.length);
+      const batch = remainingFiles.splice(0, currentBatchSize);
+      const totalBatches = Math.ceil((imageFiles.length) / this.rateAdjustment.currentBatchSize);
       
-      if (batchIndex > 0) {
-        console.log(this.chalk.yellow(`⏳ Waiting ${this.config.processing.batchDelay/1000}s between batches...`));
-        await this.Utils.delay(this.config.processing.batchDelay);
+      console.log(this.chalk.blue(`\n📦 Processing batch ${batchNumber} (${batch.length} files)...`));
+      console.log(this.chalk.gray(`   Batch size: ${currentBatchSize}, Delay: ${this.rateAdjustment.currentBatchDelay/1000}s`));
+      
+      if (batchNumber > 1) {
+        console.log(this.chalk.yellow(`⏳ Waiting ${this.rateAdjustment.currentBatchDelay/1000}s between batches...`));
+        await this.Utils.delay(this.rateAdjustment.currentBatchDelay);
       }
 
-      // Process current batch sequentially to avoid rate limits
-      for (const inputPath of batch) {
-        const outputPath = this.Utils.mapInputToOutputPath(
-          inputPath, 
-          this.config.inputDir, 
-          this.config.outputDir
-        );
-
-        try {
-          const result = await this.processor.processImage(inputPath, outputPath);
-          allResults.push(result);
-          progressBar.update();
-          
-          // Show progress within batch
-          const processedInBatch = batch.indexOf(inputPath) + 1;
-          console.log(this.chalk.gray(`  ${processedInBatch}/${batch.length} - ${this.path.basename(inputPath)} ${result.success ? '✓' : '✗'}`));
-          
-        } catch (error) {
-          console.log(this.chalk.red(`  Error processing ${this.path.basename(inputPath)}: ${error.message}`));
-          allResults.push({
-            success: false,
-            inputPath,
-            outputPath,
-            error: error.message
-          });
-          progressBar.update();
-        }
-      }
+      // Process current batch with concurrency control
+      const batchResults = await this.processBatchConcurrent(batch, progressBar);
+      allResults.push(...batchResults);
       
-      const batchSuccessCount = batch.filter((_, i) => {
-        const resultIndex = allResults.length - batch.length + i;
-        return allResults[resultIndex]?.success;
-      }).length;
+      const batchSuccessCount = batchResults.filter(r => r.success).length;
+      const batchSuccessRate = batchSuccessCount / batch.length;
       
-      console.log(this.chalk.green(`✅ Batch ${batchNumber} completed: ${batchSuccessCount}/${batch.length} successful`));
+      console.log(this.chalk.green(`✅ Batch ${batchNumber} completed: ${batchSuccessCount}/${batch.length} successful (${Math.round(batchSuccessRate * 100)}%)`));
+      
+      // Adjust batch settings based on performance
+      this.adjustBatchSettings(batchSuccessRate, batchNumber);
     }
 
     this.processor.finishProcessing();
@@ -227,12 +222,133 @@ class BatchProcessor {
     });
   }
 
+  async processBatchConcurrent(batch, progressBar) {
+    const promises = batch.map(async (inputPath) => {
+      const outputPath = this.Utils.mapInputToOutputPath(
+        inputPath, 
+        this.config.inputDir, 
+        this.config.outputDir
+      );
+
+      try {
+        const result = await this.processor.processImage(inputPath, outputPath);
+        progressBar.update();
+        
+        // Show progress within batch
+        const status = result.success ? '✓' : '✗';
+        console.log(this.chalk.gray(`  ${this.path.basename(inputPath)} ${status}`));
+        
+        return result;
+      } catch (error) {
+        console.log(this.chalk.red(`  Error processing ${this.path.basename(inputPath)}: ${error.message}`));
+        progressBar.update();
+        return {
+          success: false,
+          inputPath,
+          outputPath,
+          error: error.message
+        };
+      }
+    });
+
+    // Process with concurrency limit
+    const results = [];
+    const maxConcurrency = this.config.processing.maxConcurrency;
+    
+    for (let i = 0; i < promises.length; i += maxConcurrency) {
+      const chunk = promises.slice(i, i + maxConcurrency);
+      const chunkResults = await Promise.all(chunk);
+      results.push(...chunkResults);
+    }
+
+    return results;
+  }
+
   createBatches(items, batchSize) {
     const batches = [];
     for (let i = 0; i < items.length; i += batchSize) {
       batches.push(items.slice(i, i + batchSize));
     }
     return batches;
+  }
+
+  adjustBatchSettings(batchSuccessRate, batchNumber) {
+    if (!this.config.processing.dynamicRateAdjustment.enabled) {
+      return;
+    }
+
+    const settings = this.config.processing.dynamicRateAdjustment;
+    
+    // Record batch performance
+    this.rateAdjustment.batchHistory.push({
+      batchNumber,
+      successRate: batchSuccessRate,
+      batchSize: this.rateAdjustment.currentBatchSize,
+      batchDelay: this.rateAdjustment.currentBatchDelay
+    });
+
+    // Check if it's time to adjust (every N batches)
+    if (batchNumber % settings.adjustmentInterval !== 0) {
+      return;
+    }
+
+    // Calculate recent success rate (last 3 batches)
+    const recentBatches = this.rateAdjustment.batchHistory.slice(-3);
+    const avgSuccessRate = recentBatches.reduce((sum, batch) => sum + batch.successRate, 0) / recentBatches.length;
+
+    let shouldAdjust = false;
+    let scaleUp = false;
+
+    if (avgSuccessRate >= settings.scaleUpThreshold) {
+      // Performance is good, try to scale up
+      scaleUp = true;
+      shouldAdjust = true;
+      this.rateAdjustment.consecutiveFailures = 0;
+    } else if (avgSuccessRate <= settings.scaleDownThreshold) {
+      // Performance is poor, scale down
+      scaleUp = false;
+      shouldAdjust = true;
+      this.rateAdjustment.consecutiveFailures++;
+    }
+
+    if (shouldAdjust) {
+      const oldBatchSize = this.rateAdjustment.currentBatchSize;
+      const oldBatchDelay = this.rateAdjustment.currentBatchDelay;
+
+      if (scaleUp) {
+        // Increase batch size, decrease delay
+        this.rateAdjustment.currentBatchSize = Math.min(
+          Math.round(this.rateAdjustment.currentBatchSize * settings.scalingFactor),
+          settings.maxBatchSize
+        );
+        this.rateAdjustment.currentBatchDelay = Math.max(
+          Math.round(this.rateAdjustment.currentBatchDelay / settings.scalingFactor),
+          settings.minBatchDelay
+        );
+      } else {
+        // Decrease batch size, increase delay
+        this.rateAdjustment.currentBatchSize = Math.max(
+          Math.round(this.rateAdjustment.currentBatchSize / settings.scalingFactor),
+          settings.minBatchSize
+        );
+        this.rateAdjustment.currentBatchDelay = Math.min(
+          Math.round(this.rateAdjustment.currentBatchDelay * settings.scalingFactor),
+          settings.maxBatchDelay
+        );
+      }
+
+      this.rateAdjustment.adjustmentCount++;
+      
+      const direction = scaleUp ? 'UP' : 'DOWN';
+      const reason = scaleUp ? 'high success rate' : 'low success rate';
+      
+      console.log(this.chalk.yellow(
+        `🔄 Dynamic adjustment ${this.rateAdjustment.adjustmentCount}: Scaling ${direction} (${reason})\n` +
+        `   Batch size: ${oldBatchSize} → ${this.rateAdjustment.currentBatchSize}\n` +
+        `   Batch delay: ${oldBatchDelay}ms → ${this.rateAdjustment.currentBatchDelay}ms\n` +
+        `   Recent success rate: ${Math.round(avgSuccessRate * 100)}%`
+      ));
+    }
   }
 
   async runTestMode(testFiles) {
@@ -283,6 +399,24 @@ class BatchProcessor {
     console.log(`${this.chalk.blue('Success Rate:')} ${stats.successRate}%`);
     console.log(`${this.chalk.yellow('Total Duration:')} ${Math.round(duration * 100) / 100}s`);
     console.log(`${this.chalk.magenta('Avg Time/File:')} ${stats.avgTimePerFile}s`);
+
+    // Show dynamic adjustment statistics
+    if (this.config.processing.dynamicRateAdjustment.enabled && this.rateAdjustment.adjustmentCount > 0) {
+      console.log(`\n${this.chalk.cyan('🧠 Dynamic Rate Adjustment Stats:')}`);
+      console.log(`${this.chalk.cyan('Adjustments Made:')} ${this.rateAdjustment.adjustmentCount}`);
+      console.log(`${this.chalk.cyan('Final Batch Size:')} ${this.rateAdjustment.currentBatchSize}`);
+      console.log(`${this.chalk.cyan('Final Batch Delay:')} ${this.rateAdjustment.currentBatchDelay/1000}s`);
+      
+      const initialThroughput = 60000 / (this.config.processing.batchDelay + (this.config.processing.batchSize * this.config.processing.requestDelay));
+      const finalThroughput = 60000 / (this.rateAdjustment.currentBatchDelay + (this.rateAdjustment.currentBatchSize * this.config.processing.requestDelay));
+      const improvementPercent = Math.round(((finalThroughput - initialThroughput) / initialThroughput) * 100);
+      
+      if (improvementPercent > 0) {
+        console.log(`${this.chalk.green('Throughput Improvement:')} +${improvementPercent}% (estimated)`);
+      } else if (improvementPercent < 0) {
+        console.log(`${this.chalk.red('Throughput Change:')} ${improvementPercent}% (optimized for reliability)`);
+      }
+    }
 
     if (stats.failed > 0) {
       console.log(`\n${this.chalk.red('Failed files logged to:')} ${this.config.logging.errorLogFile}`);

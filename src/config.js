@@ -48,7 +48,7 @@ export const config = {
     errorLogFile: './failed-files.log',
     
     // Console output verbosity (0=quiet, 1=normal, 2=verbose)
-    verbosity: 1,
+    verbosity: 2,
     
     // Log successful operations
     logSuccess: true

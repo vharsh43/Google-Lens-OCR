@@ -48,10 +48,12 @@ class BatchProcessor {
   async validateEnvironment() {
     Utils.log('Validating environment...', 'info');
 
+    Utils.log(`Checking input directory: ${path.resolve(config.inputDir)}`, 'verbose');
     if (!await fs.pathExists(config.inputDir)) {
       throw new Error(`Input directory does not exist: ${config.inputDir}`);
     }
 
+    Utils.log(`Creating output directory: ${path.resolve(config.outputDir)}`, 'verbose');
     await Utils.ensureDirectoryExists(config.outputDir);
 
     if (await fs.pathExists(config.logging.errorLogFile)) {
@@ -63,16 +65,43 @@ class BatchProcessor {
 
   async findImageFiles() {
     Utils.log('Scanning for image files...', 'info');
+    Utils.log(`Searching in directory: ${path.resolve(config.inputDir)}`, 'verbose');
+    Utils.log(`Looking for extensions: ${config.supportedExtensions.join(', ')}`, 'verbose');
+    
+    // Debug: Check what's actually in the directory
+    try {
+      const dirContents = await fs.readdir(config.inputDir);
+      Utils.log(`Directory contents (${dirContents.length} items):`, 'verbose');
+      for (const item of dirContents) {
+        const itemPath = path.join(config.inputDir, item);
+        const stats = await fs.stat(itemPath);
+        const type = stats.isDirectory() ? '[DIR]' : '[FILE]';
+        Utils.log(`  ${type} ${item}`, 'verbose');
+      }
+    } catch (error) {
+      Utils.log(`Error reading directory: ${error.message}`, 'error');
+    }
     
     const files = await Utils.findImageFiles(config.inputDir);
+    Utils.log(`Found ${files.length} potential image files`, 'verbose');
+    
+    if (files.length > 0) {
+      Utils.log('Found files:', 'verbose');
+      files.forEach(file => Utils.log(`  - ${file}`, 'verbose'));
+    }
+    
     const validFiles = [];
 
     for (const file of files) {
       if (await this.processor.validateImageFile(file)) {
         validFiles.push(file);
+        Utils.log(`✓ Valid: ${file}`, 'verbose');
+      } else {
+        Utils.log(`✗ Invalid: ${file}`, 'verbose');
       }
     }
 
+    Utils.log(`Final valid files count: ${validFiles.length}`, 'verbose');
     return validFiles;
   }
 

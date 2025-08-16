@@ -28,19 +28,39 @@ export class Utils {
 
   static async findImageFiles(inputDir) {
     try {
+      // Windows path normalization
+      const normalizedInputDir = path.resolve(inputDir);
+      console.log(chalk.gray(`[DEBUG] Normalized input directory: ${normalizedInputDir}`));
+      
       const patterns = config.supportedExtensions.map(ext => 
-        path.join(inputDir, '**', `*${ext}`).replace(/\\/g, '/')
+        path.join(normalizedInputDir, '**', `*${ext}`).replace(/\\/g, '/')
       );
+      
+      console.log(chalk.gray(`[DEBUG] Search patterns:`));
+      patterns.forEach(pattern => console.log(chalk.gray(`  - ${pattern}`)));
       
       const files = [];
       for (const pattern of patterns) {
-        const matches = await glob(pattern, { nocase: true });
+        console.log(chalk.gray(`[DEBUG] Searching pattern: ${pattern}`));
+        const matches = await glob(pattern, { 
+          nocase: true,
+          windowsPathsNoEscape: true  // Windows-specific option
+        });
+        console.log(chalk.gray(`[DEBUG] Found ${matches.length} matches for pattern ${pattern}`));
+        if (matches.length > 0) {
+          console.log(chalk.gray(`[DEBUG] Matches:`));
+          matches.forEach(match => console.log(chalk.gray(`    - ${match}`)));
+        }
         files.push(...matches);
       }
       
-      return [...new Set(files)].sort();
+      const uniqueFiles = [...new Set(files)].sort();
+      console.log(chalk.gray(`[DEBUG] Total unique files found: ${uniqueFiles.length}`));
+      
+      return uniqueFiles;
     } catch (error) {
       console.error(chalk.red('Failed to find image files:', error.message));
+      console.error(chalk.red('Error details:', error));
       return [];
     }
   }

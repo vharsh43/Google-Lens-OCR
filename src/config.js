@@ -8,17 +8,26 @@ export const config = {
   
   // Processing options
   processing: {
-    // Maximum concurrent OCR operations
-    maxConcurrency: 3,
+    // Rate limiting for Google API
+    batchSize: 5,              // Process 5 files per batch
+    batchDelay: 10000,         // Wait 10 seconds between batches
+    requestDelay: 2000,        // Wait 2 seconds between individual requests
+    
+    // Maximum concurrent OCR operations (reduced for rate limiting)
+    maxConcurrency: 1,         // Process one at a time to avoid rate limits
     
     // Retry attempts for failed operations
-    maxRetries: 2,
+    maxRetries: 3,             // Increased retries for rate limit errors
     
     // Delay between retries (ms)
-    retryDelay: 1000,
+    retryDelay: 5000,          // Increased delay for rate limit recovery
+    
+    // Exponential backoff for retries
+    exponentialBackoff: true,
+    maxRetryDelay: 30000,      // Maximum retry delay (30 seconds)
     
     // Timeout for each OCR operation (ms)
-    timeout: 30000,
+    timeout: 45000,            // Increased timeout for slower processing
     
     // Language detection and preservation
     preserveOriginalScript: true,
@@ -27,7 +36,11 @@ export const config = {
     languageHints: [], // e.g., ['gu', 'hi', 'sa'] for Gujarati, Hindi, Sanskrit
     
     // Validate text integrity (ensure no unwanted translation)
-    validateTextIntegrity: true
+    validateTextIntegrity: true,
+    
+    // Rate limit error handling
+    rateLimitRetryMultiplier: 2.0,  // Multiply delay by this on rate limit errors
+    apiErrorCodes: ['RATE_LIMITED', 'QUOTA_EXCEEDED', 'TOO_MANY_REQUESTS']
   },
   
   // Output options

@@ -21,6 +21,11 @@ export class OCRProcessor {
     try {
       Utils.log(`Processing: ${path.basename(inputPath)}`, 'verbose');
       
+      // Add delay between requests to respect rate limits
+      if (retryCount === 0) {
+        await Utils.delay(config.processing.requestDelay);
+      }
+      
       const result = await this.performOCR(inputPath);
       
       if (!result || !result.segments || result.segments.length === 0) {
@@ -46,11 +51,14 @@ export class OCRProcessor {
       };
 
     } catch (error) {
-      Utils.log(`Failed to process ${path.basename(inputPath)}: ${error.message}`, 'error');
+      const isRateLimitError = this.isRateLimitError(error);
+      Utils.log(`Failed to process ${path.basename(inputPath)}: ${error.message}${isRateLimitError ? ' (Rate Limit)' : ''}`, 'error');
       
       if (retryCount < config.processing.maxRetries) {
-        Utils.log(`Retrying ${path.basename(inputPath)} (attempt ${retryCount + 1}/${config.processing.maxRetries})`, 'warning');
-        await Utils.delay(config.processing.retryDelay);
+        const delay = this.calculateRetryDelay(retryCount, isRateLimitError);
+        
+        Utils.log(`Retrying ${path.basename(inputPath)} (attempt ${retryCount + 1}/${config.processing.maxRetries}) in ${Math.round(delay/1000)}s`, 'warning');
+        await Utils.delay(delay);
         return this.processImage(inputPath, outputPath, retryCount + 1);
       }
 
@@ -61,11 +69,40 @@ export class OCRProcessor {
         success: false,
         inputPath,
         outputPath,
-        error: error.message
+        error: error.message,
+        rateLimited: isRateLimitError
       };
     } finally {
       this.stats.processed++;
     }
+  }
+
+  isRateLimitError(error) {
+    const errorMessage = error.message?.toLowerCase() || '';
+    const errorCode = error.code?.toUpperCase() || '';
+    
+    return (
+      errorMessage.includes('rate limit') ||
+      errorMessage.includes('quota exceeded') ||
+      errorMessage.includes('too many requests') ||
+      errorMessage.includes('429') ||
+      config.processing.apiErrorCodes.includes(errorCode) ||
+      error.status === 429
+    );
+  }
+
+  calculateRetryDelay(retryCount, isRateLimitError) {
+    let baseDelay = config.processing.retryDelay;
+    
+    if (isRateLimitError) {
+      baseDelay *= config.processing.rateLimitRetryMultiplier;
+    }
+    
+    if (config.processing.exponentialBackoff) {
+      baseDelay *= Math.pow(2, retryCount);
+    }
+    
+    return Math.min(baseDelay, config.processing.maxRetryDelay);
   }
 
   async performOCR(imagePath) {

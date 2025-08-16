@@ -24,7 +24,7 @@ A powerful Node.js application that processes JPG/PNG images in bulk using Googl
 ### 1. Download & Setup
 ```bash
 # Clone or download this repository
-git clone <repository-url>
+git clone https://github.com/vharsh43/Google-Lens-OCR
 cd Google-Lens-OCR
 
 # Install dependencies

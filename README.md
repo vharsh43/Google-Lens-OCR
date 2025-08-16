@@ -22,6 +22,19 @@ A powerful Node.js application that processes JPG/PNG images in bulk using Googl
 ## 🚀 Quick Start
 
 ### 1. Download & Setup
+
+**For Windows Users:**
+```powershell
+# Clone or download this repository
+git clone https://github.com/vharsh43/Google-Lens-OCR
+cd Google-Lens-OCR
+
+# Install dependencies (Windows-specific fix)
+npm install --include=optional sharp
+npm install
+```
+
+**For macOS/Linux Users:**
 ```bash
 # Clone or download this repository
 git clone https://github.com/vharsh43/Google-Lens-OCR
@@ -164,6 +177,24 @@ export const config = {
 - Update Node.js to version 14 or higher
 - Clear npm cache: `npm cache clean --force`
 - Delete `node_modules` and `package-lock.json`, then retry `npm install`
+
+### ❌ Windows: "Could not load the sharp module" Error
+**Solution**:
+```powershell
+# Try these commands in order:
+npm install --include=optional sharp
+npm install --os=win32 --cpu=x64 sharp
+
+# If still failing, clean reinstall:
+Remove-Item -Recurse -Force node_modules
+Remove-Item package-lock.json
+npm install
+```
+
+**Alternative for Windows:**
+- Install Visual Studio Build Tools
+- Run PowerShell as Administrator
+- Use `npm install --global windows-build-tools`
 
 ## 🖥️ System Requirements
 

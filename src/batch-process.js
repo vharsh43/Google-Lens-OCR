@@ -181,6 +181,7 @@ class BatchProcessor {
     // Process files in dynamic batches
     let remainingFiles = [...imageFiles];
     const allResults = [];
+    let batchNumber = 0;
     
     while (remainingFiles.length > 0) {
       batchNumber++;
@@ -188,7 +189,6 @@ class BatchProcessor {
       // Create current batch based on dynamic batch size
       const currentBatchSize = Math.min(this.rateAdjustment.currentBatchSize, remainingFiles.length);
       const batch = remainingFiles.splice(0, currentBatchSize);
-      const totalBatches = Math.ceil((imageFiles.length) / this.rateAdjustment.currentBatchSize);
       
       console.log(this.chalk.blue(`\n📦 Processing batch ${batchNumber} (${batch.length} files)...`));
       console.log(this.chalk.gray(`   Batch size: ${currentBatchSize}, Delay: ${this.rateAdjustment.currentBatchDelay/1000}s`));
@@ -220,6 +220,9 @@ class BatchProcessor {
       total: allResults.length,
       failedTasks: allResults.filter(r => !r.success)
     });
+
+    // Generate verification report
+    await this.generateVerificationReport(allResults);
   }
 
   async processBatchConcurrent(batch, progressBar) {
@@ -252,16 +255,16 @@ class BatchProcessor {
     });
 
     // Process with concurrency limit
-    const results = [];
+    const allResults = [];
     const maxConcurrency = this.config.processing.maxConcurrency;
     
     for (let i = 0; i < promises.length; i += maxConcurrency) {
       const chunk = promises.slice(i, i + maxConcurrency);
       const chunkResults = await Promise.all(chunk);
-      results.push(...chunkResults);
+      allResults.push(...chunkResults);
     }
 
-    return results;
+    return allResults;
   }
 
   createBatches(items, batchSize) {
@@ -470,12 +473,217 @@ class BatchProcessor {
         
         if (stats.isDirectory()) {
           const newPrefix = prefix + (isLastItem ? '    ' : '│   ');
-          await this.printTree(itemPath, newPrefix, isLastItem);
+          await this.printTree(itemPath, newPrefix);
         }
       }
     } catch (error) {
       console.log(prefix + this.chalk.red(`Error reading directory: ${error.message}`));
     }
+  }
+
+  async generateVerificationReport(processedResults) {
+    console.log(this.chalk.cyan.bold('\n📋 Generating Verification Report...'));
+    
+    try {
+      // Get all image files from input directory
+      const allImageFiles = await this.Utils.findImageFiles(this.config.inputDir);
+      const reportLines = [];
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      
+      reportLines.push('='.repeat(80));
+      reportLines.push('FILE VERIFICATION REPORT');
+      reportLines.push('='.repeat(80));
+      reportLines.push(`Generated: ${new Date().toLocaleString()}`);
+      reportLines.push(`Input Directory: ${this.path.resolve(this.config.inputDir)}`);
+      reportLines.push(`Output Directory: ${this.path.resolve(this.config.outputDir)}`);
+      reportLines.push('');
+      
+      // Summary statistics
+      const totalInputFiles = allImageFiles.length;
+      const successfulConversions = processedResults.filter(r => r.success).length;
+      const failedConversions = processedResults.filter(r => !r.success).length;
+      const notProcessed = totalInputFiles - processedResults.length;
+      
+      reportLines.push('SUMMARY:');
+      reportLines.push('-'.repeat(40));
+      reportLines.push(`Total Image Files Found: ${totalInputFiles}`);
+      reportLines.push(`Successfully Converted: ${successfulConversions}`);
+      reportLines.push(`Failed Conversions: ${failedConversions}`);
+      reportLines.push(`Not Processed: ${notProcessed}`);
+      reportLines.push(`Conversion Rate: ${Math.round((successfulConversions / totalInputFiles) * 100)}%`);
+      reportLines.push('');
+
+      // Check for missing output files
+      const missingFiles = [];
+      const existingFiles = [];
+      
+      for (const inputFile of allImageFiles) {
+        const expectedOutputPath = this.Utils.mapInputToOutputPath(
+          inputFile,
+          this.config.inputDir,
+          this.config.outputDir
+        );
+        
+        const inputFileName = this.path.basename(inputFile);
+        const outputFileName = this.path.basename(expectedOutputPath);
+        const relativePath = this.path.relative(this.config.inputDir, inputFile);
+        
+        if (await this.fs.pathExists(expectedOutputPath)) {
+          const stats = await this.fs.stat(expectedOutputPath);
+          existingFiles.push({
+            input: inputFileName,
+            output: outputFileName,
+            relativePath: relativePath,
+            size: stats.size,
+            created: stats.mtime
+          });
+        } else {
+          missingFiles.push({
+            input: inputFileName,
+            relativePath: relativePath,
+            expectedOutput: outputFileName
+          });
+        }
+      }
+
+      // Report existing files
+      if (existingFiles.length > 0) {
+        reportLines.push('SUCCESSFULLY CONVERTED FILES:');
+        reportLines.push('-'.repeat(40));
+        existingFiles.forEach((file, index) => {
+          reportLines.push(`${(index + 1).toString().padStart(4)}. ${file.relativePath}`);
+          reportLines.push(`      → ${file.output} (${this.formatFileSize(file.size)})`);
+        });
+        reportLines.push('');
+      }
+
+      // Report missing files
+      if (missingFiles.length > 0) {
+        reportLines.push('MISSING/FAILED CONVERSIONS:');
+        reportLines.push('-'.repeat(40));
+        missingFiles.forEach((file, index) => {
+          reportLines.push(`${(index + 1).toString().padStart(4)}. ${file.relativePath}`);
+          reportLines.push(`      Expected: ${file.expectedOutput}`);
+          
+          // Check if this file was in processing results
+          const processResult = processedResults.find(r => 
+            this.path.basename(r.inputPath) === file.input
+          );
+          
+          if (processResult && !processResult.success) {
+            reportLines.push(`      Error: ${processResult.error}`);
+          } else if (!processResult) {
+            reportLines.push(`      Status: Not processed (possibly skipped)`);
+          } else {
+            reportLines.push(`      Status: Unknown failure`);
+          }
+        });
+        reportLines.push('');
+      }
+
+      // Failed processing details
+      const failedResults = processedResults.filter(r => !r.success);
+      if (failedResults.length > 0) {
+        reportLines.push('PROCESSING FAILURES DETAILS:');
+        reportLines.push('-'.repeat(40));
+        failedResults.forEach((result, index) => {
+          const fileName = this.path.basename(result.inputPath);
+          const relativePath = this.path.relative(this.config.inputDir, result.inputPath);
+          reportLines.push(`${(index + 1).toString().padStart(4)}. ${relativePath}`);
+          reportLines.push(`      Error: ${result.error}`);
+          if (result.rateLimited) {
+            reportLines.push(`      Cause: Rate limiting detected`);
+          }
+        });
+        reportLines.push('');
+      }
+
+      // Directory comparison
+      reportLines.push('DIRECTORY STRUCTURE COMPARISON:');
+      reportLines.push('-'.repeat(40));
+      reportLines.push('Input Structure:');
+      await this.addDirectoryStructureToReport(this.config.inputDir, reportLines, '  ');
+      reportLines.push('');
+      reportLines.push('Output Structure:');
+      await this.addDirectoryStructureToReport(this.config.outputDir, reportLines, '  ');
+      reportLines.push('');
+
+      // Recommendations
+      reportLines.push('RECOMMENDATIONS:');
+      reportLines.push('-'.repeat(40));
+      if (missingFiles.length === 0) {
+        reportLines.push('✅ All files successfully converted!');
+      } else {
+        reportLines.push(`📋 ${missingFiles.length} files need attention:`);
+        if (failedResults.some(r => r.rateLimited)) {
+          reportLines.push('   • Some failures due to rate limiting - consider running again');
+        }
+        if (missingFiles.length > failedResults.length) {
+          reportLines.push('   • Some files may not have been processed - check file formats');
+        }
+        reportLines.push('   • Review failed files above for specific error details');
+        reportLines.push('   • Consider re-running for failed files only');
+      }
+      
+      reportLines.push('');
+      reportLines.push('='.repeat(80));
+      reportLines.push('End of Report');
+      reportLines.push('='.repeat(80));
+
+      // Write report to file
+      const reportContent = reportLines.join('\n');
+      const reportPath = this.path.join(process.cwd(), 'report.txt');
+      await this.fs.writeFile(reportPath, reportContent, 'utf8');
+      
+      console.log(this.chalk.green(`\n📄 Verification report generated: ${reportPath}`));
+      console.log(this.chalk.cyan(`📊 Summary: ${successfulConversions}/${totalInputFiles} files converted successfully`));
+      
+      if (missingFiles.length > 0) {
+        console.log(this.chalk.yellow(`⚠️  ${missingFiles.length} files missing from output - see report for details`));
+      }
+
+    } catch (error) {
+      console.log(this.chalk.red(`❌ Error generating verification report: ${error.message}`));
+    }
+  }
+
+  async addDirectoryStructureToReport(directory, reportLines, prefix = '') {
+    try {
+      if (!await this.fs.pathExists(directory)) {
+        reportLines.push(`${prefix}Directory not found: ${directory}`);
+        return;
+      }
+
+      const items = await this.fs.readdir(directory);
+      const sortedItems = items.sort();
+      
+      for (const item of sortedItems) {
+        if (item.startsWith('.')) continue; // Skip hidden files
+        
+        const itemPath = this.path.join(directory, item);
+        const stats = await this.fs.stat(itemPath);
+        
+        if (stats.isDirectory()) {
+          reportLines.push(`${prefix}📁 ${item}/`);
+          await this.addDirectoryStructureToReport(itemPath, reportLines, prefix + '  ');
+        } else {
+          const ext = this.path.extname(item).toLowerCase();
+          const icon = ['.jpg', '.jpeg', '.png'].includes(ext) ? '🖼️' : 
+                      ext === '.txt' ? '📄' : '📎';
+          reportLines.push(`${prefix}${icon} ${item} (${this.formatFileSize(stats.size)})`);
+        }
+      }
+    } catch (error) {
+      reportLines.push(`${prefix}Error reading directory: ${error.message}`);
+    }
+  }
+
+  formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 }
 

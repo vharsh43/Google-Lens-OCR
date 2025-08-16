@@ -297,6 +297,69 @@ Throughput Improvement: +240% (estimated)
 Output directory: /path/to/TXT_Files
 ```
 
+## 📋 Verification Report
+
+After processing completes, the system automatically generates a comprehensive `report.txt` file that includes:
+
+### 📊 Complete Analysis
+- **File count verification**: Compares input vs output directories
+- **Missing file detection**: Lists any files that failed to convert
+- **Error details**: Specific reasons for failed conversions
+- **Directory structure comparison**: Visual comparison of input/output folders
+- **Success statistics**: Detailed conversion rates and metrics
+
+### 📄 Report Contents
+```
+================================================================================
+FILE VERIFICATION REPORT
+================================================================================
+Generated: 12/8/2024, 5:30:15 PM
+Input Directory: /path/to/JPG2TXT
+Output Directory: /path/to/TXT_Files
+
+SUMMARY:
+----------------------------------------
+Total Image Files Found: 976
+Successfully Converted: 974
+Failed Conversions: 2
+Not Processed: 0
+Conversion Rate: 99%
+
+SUCCESSFULLY CONVERTED FILES:
+----------------------------------------
+   1. documents/hindi-document.jpg
+      → hindi-document.txt (2.4 KB)
+   2. books/chapter1/page001.jpg
+      → page001.txt (1.8 KB)
+   ...
+
+MISSING/FAILED CONVERSIONS:
+----------------------------------------
+   1. corrupted-image.jpg
+      Expected: corrupted-image.txt
+      Error: No text detected in image
+   ...
+
+RECOMMENDATIONS:
+----------------------------------------
+✅ 974/976 files successfully converted!
+   • Review failed files above for specific error details
+   • Consider re-running for failed files only
+```
+
+### 🔍 What It Checks
+1. **File Existence**: Every input file has a corresponding output file
+2. **Processing Status**: Which files succeeded, failed, or were skipped
+3. **Error Reasons**: Detailed error messages for failed files
+4. **Directory Structure**: Confirms folder hierarchy is preserved
+5. **File Sizes**: Output file sizes to verify content was extracted
+
+### 📈 Actionable Insights
+- **Rate Limit Issues**: Identifies files that failed due to API limits
+- **File Format Problems**: Highlights unsupported or corrupted files  
+- **Missing Content**: Flags files where no text was detected
+- **Re-processing Lists**: Easy identification of files to retry
+
 ### 🚀 Performance Improvements
 
 **Before Optimization**: ~12 files/minute

@@ -1,0 +1,21 @@
+{
+  "name": "bulk-ocr-processor",
+  "version": "1.0.0",
+  "description": "Bulk OCR processing system using Google Lens",
+  "type": "module",
+  "main": "src/batch-process.js",
+  "scripts": {
+    "start": "node src/batch-process.js",
+    "process": "node src/batch-process.js",
+    "test": "node src/batch-process.js --test"
+  },
+  "dependencies": {
+    "chrome-lens-ocr": "^4.1.1",
+    "fs-extra": "^11.2.0",
+    "glob": "^10.3.10",
+    "chalk": "^5.3.0"
+  },
+  "keywords": ["ocr", "google-lens", "bulk-processing", "text-extraction"],
+  "author": "",
+  "license": "MIT"
+}

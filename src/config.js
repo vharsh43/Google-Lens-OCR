@@ -1,6 +1,6 @@
 export const config = {
   // Input and output directories
-  inputDir: './JPG2TXT',
+  inputDir: './Converted_PNGs',    // Changed to read from PDF conversion output
   outputDir: './TXT_Files',
   
   // Supported image file extensions

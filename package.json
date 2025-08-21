@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node src/batch-process.js",
     "process": "node src/batch-process.js",
-    "test": "node src/batch-process.js --test"
+    "test": "node src/batch-process.js --test",
+    "pipeline": "node pipeline.js",
+    "pdf2png": "python3 PDF_2_JPG.py"
   },
   "dependencies": {
     "chrome-lens-ocr": "^4.1.1",

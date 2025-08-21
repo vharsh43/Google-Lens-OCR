@@ -66,7 +66,11 @@ export const config = {
     includeMetadata: false,
     
     // Encoding for output files
-    encoding: 'utf8'
+    encoding: 'utf8',
+    
+    // Merged file options
+    generateMergedFiles: true,        // Generate merged OCR files for each folder
+    mergedFileSuffix: '_OCR'          // Suffix for merged files (e.g., foldername_OCR.txt)
   },
   
   // Logging options

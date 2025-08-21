@@ -221,6 +221,17 @@ class BatchProcessor {
       failedTasks: allResults.filter(r => !r.success)
     });
 
+    // Generate merged OCR files
+    const successfulResults = allResults.filter(r => r.success);
+    if (successfulResults.length > 0) {
+      console.log(this.chalk.cyan('\n📋 Generating merged OCR files...'));
+      try {
+        await this.Utils.generateMergedOCRFiles(this.config.outputDir);
+      } catch (error) {
+        console.log(this.chalk.yellow(`⚠️  Warning: Could not generate merged files: ${error.message}`));
+      }
+    }
+
     // Generate verification report
     await this.generateVerificationReport(allResults);
   }
@@ -387,6 +398,16 @@ class BatchProcessor {
     
     const stats = this.processor.getStats();
     console.log(this.chalk.cyan(`\nTest completed: ${stats.successful}/${stats.processed} successful`));
+    
+    // Generate merged OCR files for test mode too
+    if (stats.successful > 0) {
+      console.log(this.chalk.cyan('\n📋 Generating merged OCR files for test results...'));
+      try {
+        await this.Utils.generateMergedOCRFiles(this.config.outputDir);
+      } catch (error) {
+        console.log(this.chalk.yellow(`⚠️  Warning: Could not generate merged files: ${error.message}`));
+      }
+    }
   }
 
   async printSummary(results) {
@@ -608,6 +629,9 @@ class BatchProcessor {
       await this.addDirectoryStructureToReport(this.config.outputDir, reportLines, '  ');
       reportLines.push('');
 
+      // Merged OCR Files Report
+      await this.addMergedFilesReport(reportLines);
+
       // Recommendations
       reportLines.push('RECOMMENDATIONS:');
       reportLines.push('-'.repeat(40));
@@ -668,13 +692,105 @@ class BatchProcessor {
           await this.addDirectoryStructureToReport(itemPath, reportLines, prefix + '  ');
         } else {
           const ext = this.path.extname(item).toLowerCase();
-          const icon = ['.jpg', '.jpeg', '.png'].includes(ext) ? '🖼️' : 
-                      ext === '.txt' ? '📄' : '📎';
+          let icon;
+          if (['.jpg', '.jpeg', '.png'].includes(ext)) {
+            icon = '🖼️';
+          } else if (ext === '.txt') {
+            // Check if it's a merged OCR file
+            if (item.includes(this.config.output.mergedFileSuffix)) {
+              icon = '📋'; // Different icon for merged OCR files
+            } else {
+              icon = '📄'; // Regular text files
+            }
+          } else {
+            icon = '📎';
+          }
           reportLines.push(`${prefix}${icon} ${item} (${this.formatFileSize(stats.size)})`);
         }
       }
     } catch (error) {
       reportLines.push(`${prefix}Error reading directory: ${error.message}`);
+    }
+  }
+
+  async addMergedFilesReport(reportLines) {
+    try {
+      const mergedFiles = [];
+      
+      // Find all merged OCR files
+      await this.findMergedFiles(this.config.outputDir, mergedFiles);
+      
+      if (mergedFiles.length > 0) {
+        reportLines.push('MERGED OCR FILES:');
+        reportLines.push('-'.repeat(40));
+        reportLines.push(`Generated ${mergedFiles.length} merged OCR file(s):`);
+        reportLines.push('');
+        
+        mergedFiles.forEach((file, index) => {
+          const relativePath = this.path.relative(this.config.outputDir, file.path);
+          reportLines.push(`${(index + 1).toString().padStart(4)}. 📋 ${relativePath}`);
+          reportLines.push(`      Size: ${this.formatFileSize(file.size)}`);
+          reportLines.push(`      Files merged: ${file.fileCount || 'Unknown'}`);
+        });
+        reportLines.push('');
+      } else if (this.config.output.generateMergedFiles) {
+        reportLines.push('MERGED OCR FILES:');
+        reportLines.push('-'.repeat(40));
+        reportLines.push('⚠️  No merged files were generated (no successful conversions or disabled)');
+        reportLines.push('');
+      }
+    } catch (error) {
+      reportLines.push('MERGED OCR FILES:');
+      reportLines.push('-'.repeat(40));
+      reportLines.push(`❌ Error checking merged files: ${error.message}`);
+      reportLines.push('');
+    }
+  }
+
+  async findMergedFiles(directory, mergedFiles = []) {
+    try {
+      if (!await this.fs.pathExists(directory)) {
+        return mergedFiles;
+      }
+
+      const items = await this.fs.readdir(directory);
+      
+      for (const item of items) {
+        const itemPath = this.path.join(directory, item);
+        const stats = await this.fs.stat(itemPath);
+        
+        if (stats.isDirectory()) {
+          await this.findMergedFiles(itemPath, mergedFiles);
+        } else if (stats.isFile() && 
+                   item.includes(this.config.output.mergedFileSuffix) && 
+                   this.path.extname(item).toLowerCase() === '.txt') {
+          
+          // Count individual text files in the same directory to estimate merged count
+          let fileCount = 'Unknown';
+          try {
+            const directoryPath = this.path.dirname(itemPath);
+            const directoryItems = await this.fs.readdir(directoryPath);
+            const txtFileCount = directoryItems.filter(file => 
+              file.endsWith('.txt') && 
+              !file.includes(this.config.output.mergedFileSuffix)
+            ).length;
+            fileCount = txtFileCount.toString();
+          } catch (error) {
+            // Ignore read errors for count
+          }
+          
+          mergedFiles.push({
+            path: itemPath,
+            size: stats.size,
+            fileCount: fileCount
+          });
+        }
+      }
+      
+      return mergedFiles;
+    } catch (error) {
+      console.log(this.chalk.yellow(`Warning: Could not scan directory ${directory}: ${error.message}`));
+      return mergedFiles;
     }
   }
 

@@ -166,6 +166,157 @@ export class Utils {
   static sanitizeFilename(filename) {
     return filename.replace(/[<>:"/\\|?*]/g, '_').trim();
   }
+
+  static async generateMergedOCRFiles(outputDir) {
+    if (!config.output.generateMergedFiles) {
+      this.log('Merged file generation is disabled', 'info');
+      return;
+    }
+
+    this.log('Starting merged OCR file generation...', 'info');
+    
+    try {
+      // Get all directories that contain .txt files
+      const directories = await this.getDirectoriesWithTxtFiles(outputDir);
+      
+      let mergedCount = 0;
+      
+      for (const directory of directories) {
+        const mergedFilePath = await this.createMergedFileForDirectory(directory);
+        if (mergedFilePath) {
+          mergedCount++;
+          this.log(`Created merged file: ${path.relative(outputDir, mergedFilePath)}`, 'success');
+        }
+      }
+      
+      this.log(`Successfully generated ${mergedCount} merged OCR file(s)`, 'success');
+      
+    } catch (error) {
+      this.log(`Error generating merged OCR files: ${error.message}`, 'error');
+      throw error;
+    }
+  }
+
+  static async getDirectoriesWithTxtFiles(outputDir, directories = []) {
+    try {
+      if (!await fs.pathExists(outputDir)) {
+        return directories;
+      }
+
+      const items = await fs.readdir(outputDir);
+      let hasTextFiles = false;
+      
+      // Check if current directory has .txt files
+      for (const item of items) {
+        const itemPath = path.join(outputDir, item);
+        const stats = await fs.stat(itemPath);
+        
+        if (stats.isFile() && path.extname(item).toLowerCase() === '.txt') {
+          // Skip files that already have the merged suffix
+          if (!item.includes(config.output.mergedFileSuffix)) {
+            hasTextFiles = true;
+          }
+        }
+      }
+      
+      // If current directory has text files, add it to the list
+      if (hasTextFiles) {
+        directories.push(outputDir);
+      }
+      
+      // Recursively check subdirectories
+      for (const item of items) {
+        const itemPath = path.join(outputDir, item);
+        const stats = await fs.stat(itemPath);
+        
+        if (stats.isDirectory()) {
+          await this.getDirectoriesWithTxtFiles(itemPath, directories);
+        }
+      }
+      
+      return directories;
+      
+    } catch (error) {
+      this.log(`Error scanning directory ${outputDir}: ${error.message}`, 'error');
+      return directories;
+    }
+  }
+
+  static async createMergedFileForDirectory(directory) {
+    try {
+      // Get all .txt files in the directory (excluding already merged files)
+      const txtFiles = await this.getTxtFilesInDirectory(directory);
+      
+      if (txtFiles.length === 0) {
+        return null;
+      }
+      
+      // Sort files alphabetically for consistent ordering
+      txtFiles.sort();
+      
+      // Generate merged filename
+      const directoryName = path.basename(directory);
+      const mergedFileName = `${directoryName}${config.output.mergedFileSuffix}.txt`;
+      const mergedFilePath = path.join(directory, mergedFileName);
+      
+      // Create merged content - just the text with no extra formatting
+      let mergedContent = '';
+      
+      for (let i = 0; i < txtFiles.length; i++) {
+        const txtFile = txtFiles[i];
+        
+        try {
+          const fileContent = await fs.readFile(txtFile, config.output.encoding);
+          const trimmedContent = fileContent.trim();
+          
+          if (trimmedContent) {
+            mergedContent += trimmedContent;
+            
+            // Add newline between files (except for the last one)
+            if (i < txtFiles.length - 1) {
+              mergedContent += '\n\n';
+            }
+          }
+        } catch (error) {
+          // Skip files that can't be read, don't add error messages
+          this.log(`Warning: Could not read file ${txtFile}: ${error.message}`, 'warning');
+        }
+      }
+      
+      // Write merged file
+      await fs.writeFile(mergedFilePath, mergedContent, config.output.encoding);
+      
+      return mergedFilePath;
+      
+    } catch (error) {
+      this.log(`Error creating merged file for ${directory}: ${error.message}`, 'error');
+      return null;
+    }
+  }
+
+  static async getTxtFilesInDirectory(directory) {
+    try {
+      const items = await fs.readdir(directory);
+      const txtFiles = [];
+      
+      for (const item of items) {
+        const itemPath = path.join(directory, item);
+        const stats = await fs.stat(itemPath);
+        
+        if (stats.isFile() && 
+            path.extname(item).toLowerCase() === '.txt' &&
+            !item.includes(config.output.mergedFileSuffix)) {
+          txtFiles.push(itemPath);
+        }
+      }
+      
+      return txtFiles;
+      
+    } catch (error) {
+      this.log(`Error reading directory ${directory}: ${error.message}`, 'error');
+      return [];
+    }
+  }
 }
 
 export class ProcessingQueue {

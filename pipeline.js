@@ -12,6 +12,7 @@ class PDFToTextPipeline {
     this.textOutputDir = './TXT_Files/';
     this.logFile = 'PipelineLog.txt';
     this.startTime = Date.now();
+    this.pythonCmd = null; // Will be detected dynamically
   }
 
   async run() {
@@ -42,7 +43,7 @@ class PDFToTextPipeline {
       await this.logMessage(`Pipeline failed: ${error.message}`);
       
       // Provide helpful error context
-      if (error.message.includes('python3') || error.message.includes('PyMuPDF')) {
+      if (error.message.includes('python') || error.message.includes('Python') || error.message.includes('PyMuPDF')) {
         console.log(chalk.yellow('\n💡 Tip: Install Python dependencies with:'));
         console.log(chalk.gray('   pip install PyMuPDF tqdm'));
       }
@@ -51,42 +52,55 @@ class PDFToTextPipeline {
     }
   }
 
+  async detectPythonCommand() {
+    const pythonCommands = ['python3', 'python'];
+    
+    for (const cmd of pythonCommands) {
+      try {
+        await new Promise((resolve, reject) => {
+          const pythonCheck = spawn(cmd, ['--version'], { stdio: 'pipe' });
+          
+          let output = '';
+          pythonCheck.stdout.on('data', (data) => {
+            output += data.toString();
+          });
+          
+          pythonCheck.on('close', (code) => {
+            if (code === 0) {
+              const version = output.trim();
+              console.log(chalk.green(`   ✅ Python found: ${version} (using '${cmd}')`));
+              this.pythonCmd = cmd;
+              resolve();
+            } else {
+              reject(new Error(`${cmd} not found`));
+            }
+          });
+          
+          pythonCheck.on('error', () => {
+            reject(new Error(`${cmd} not found in PATH`));
+          });
+        });
+        return; // Success, exit the loop
+      } catch (error) {
+        // Try next command
+        continue;
+      }
+    }
+    
+    throw new Error('Python is required but not found. Please install Python 3.6+ and ensure it\'s in your PATH');
+  }
+
   async checkDependencies() {
     console.log(chalk.blue('🔧 Step 0: Checking dependencies...'));
     await this.logMessage('Checking system dependencies');
     
-    // Check Python3 availability
-    try {
-      await new Promise((resolve, reject) => {
-        const pythonCheck = spawn('python3', ['--version'], { stdio: 'pipe' });
-        
-        let output = '';
-        pythonCheck.stdout.on('data', (data) => {
-          output += data.toString();
-        });
-        
-        pythonCheck.on('close', (code) => {
-          if (code === 0) {
-            const version = output.trim();
-            console.log(chalk.green(`   ✅ Python3 found: ${version}`));
-            resolve();
-          } else {
-            reject(new Error('Python3 not found'));
-          }
-        });
-        
-        pythonCheck.on('error', () => {
-          reject(new Error('Python3 not found in PATH'));
-        });
-      });
-    } catch (error) {
-      throw new Error('Python3 is required but not found. Please install Python 3.6+ and ensure it\'s in your PATH');
-    }
+    // Detect and check Python availability
+    await this.detectPythonCommand();
 
     // Check PyMuPDF availability
     try {
       await new Promise((resolve, reject) => {
-        const fitzCheck = spawn('python3', ['-c', 'import fitz; print(f"PyMuPDF v{fitz.VersionBind}")'], { stdio: 'pipe' });
+        const fitzCheck = spawn(this.pythonCmd, ['-c', 'import fitz; print(f"PyMuPDF v{fitz.VersionBind}")'], { stdio: 'pipe' });
         
         let output = '';
         fitzCheck.stdout.on('data', (data) => {
@@ -159,7 +173,7 @@ class PDFToTextPipeline {
     }
 
     return new Promise((resolve, reject) => {
-      const pythonProcess = spawn('python3', ['PDF_2_JPG.py'], {
+      const pythonProcess = spawn(this.pythonCmd, ['PDF_2_JPG.py'], {
         stdio: ['inherit', 'pipe', 'pipe']
       });
 
@@ -245,7 +259,7 @@ class PDFToTextPipeline {
         await this.logMessage(errorMsg);
         
         if (error.code === 'ENOENT') {
-          reject(new Error(`${errorMsg}\n💡 Python3 not found in PATH. Please install Python 3.6+`));
+          reject(new Error(`${errorMsg}\n💡 Python not found in PATH. Please install Python 3.6+`));
         } else {
           reject(new Error(errorMsg));
         }

@@ -1,3 +1,0 @@
-This is the content of file2.
-It has different text content.
-This is the second document in the documents folder.

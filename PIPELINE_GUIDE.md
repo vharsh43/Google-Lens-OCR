@@ -11,9 +11,9 @@ This integrated pipeline converts PDFs to text files through a 3-stage process:
 ## Quick Start - Complete Pipeline
 
 ### 1. Add Your PDFs
-Place PDF files in the `New_File_Process_PDF_2_JPG/` folder:
+Place PDF files in the `1_New_File_Process_PDF_2_PNG/` folder:
 ```
-New_File_Process_PDF_2_JPG/
+1_New_File_Process_PDF_2_PNG/
 ├── document1.pdf
 ├── folder1/
 │   └── document2.pdf
@@ -54,24 +54,24 @@ npm run test
 ## Folder Structure
 
 ### Input
-- `New_File_Process_PDF_2_JPG/` - Place your PDF files here
+- `1_New_File_Process_PDF_2_PNG/` - Place your PDF files here
 
 ### Intermediate
-- `Converted_PNGs/` - PNG images generated from PDFs (300 DPI)
+- `2_Converted_PNGs/` - PNG images generated from PDFs (300 DPI)
 
 ### Output
-- `TXT_Files/` - Final text files and merged files
+- `3_OCR_TXT_Files/` - Final text files and merged files
 
 ### Example Complete Structure:
 ```
-New_File_Process_PDF_2_JPG/
+1_New_File_Process_PDF_2_PNG/
 ├── book1.pdf
 └── documents/
     └── report.pdf
 
         ↓ (Pipeline Processing)
 
-Converted_PNGs/
+2_Converted_PNGs/
 ├── book1/
 │   ├── book1_0001.png
 │   └── book1_0002.png
@@ -81,7 +81,7 @@ Converted_PNGs/
 
         ↓ (OCR Processing)
 
-TXT_Files/
+3_OCR_TXT_Files/
 ├── book1/
 │   ├── book1_0001.txt
 │   ├── book1_0002.txt
@@ -145,20 +145,20 @@ Automatically verifies:
 ## Logs and Reports
 
 The pipeline generates comprehensive log files:
-- `PipelineLog.txt` - Complete pipeline execution log with timestamps
+- `logs/PipelineLog.txt` - Complete pipeline execution log with timestamps
 - `PipelineSummary.txt` - Detailed summary with success metrics
-- `ConversionLog.txt` - PDF to PNG conversion details
-- `report.txt` - OCR verification report with merged file info
+- `logs/ConversionLog.txt` - PDF to PNG conversion details
+- `logs/report.txt` - OCR verification report with merged file info
 - `pdf_conversion_complete.flag` - Stage completion indicator
 
 ## Troubleshooting
 
 ### PDFs Not Converting
-- Check if PDFs exist in `New_File_Process_PDF_2_JPG/`
+- Check if PDFs exist in `1_New_File_Process_PDF_2_PNG/`
 - Ensure Python 3 and PyMuPDF are installed
 
 ### OCR Processing Issues
-- Verify PNG files were created in `Converted_PNGs/`
+- Verify PNG files were created in `2_Converted_PNGs/`
 - Check internet connection for Google Lens API
 - Review rate limiting settings in `src/config.js`
 

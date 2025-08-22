@@ -656,7 +656,7 @@ class BatchProcessor {
 
       // Write report to file
       const reportContent = reportLines.join('\n');
-      const reportPath = this.path.join(process.cwd(), 'report.txt');
+      const reportPath = this.path.join(process.cwd(), 'logs', 'report.txt');
       await this.fs.writeFile(reportPath, reportContent, 'utf8');
       
       console.log(this.chalk.green(`\n📄 Verification report generated: ${reportPath}`));

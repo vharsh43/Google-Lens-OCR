@@ -39,7 +39,7 @@ async function runPdf2Png() {
     const pythonCmd = await detectPythonCommand();
     console.log(`Using Python command: ${pythonCmd}`);
     
-    const pythonProcess = spawn(pythonCmd, ['PDF_2_JPG.py'], {
+    const pythonProcess = spawn(pythonCmd, ['PDF_2_PNG.py'], {
       stdio: 'inherit'
     });
     

@@ -1,7 +1,7 @@
 export const config = {
   // Input and output directories
-  inputDir: './Converted_PNGs',    // Changed to read from PDF conversion output
-  outputDir: './TXT_Files',
+  inputDir: './2_Converted_PNGs',    // Changed to read from PDF conversion output
+  outputDir: './3_OCR_TXT_Files',
   
   // Supported image file extensions
   supportedExtensions: ['.jpg', '.jpeg', '.png'],
@@ -76,7 +76,7 @@ export const config = {
   // Logging options
   logging: {
     // Log file for failed operations
-    errorLogFile: './failed-files.log',
+    errorLogFile: './logs/failed-files.log',
     
     // Console output verbosity (0=quiet, 1=normal, 2=verbose)
     verbosity: 2,

@@ -7,10 +7,10 @@ import chalk from 'chalk';
 
 class PDFToTextPipeline {
   constructor() {
-    this.pdfInputDir = './New_File_Process_PDF_2_JPG/';
-    this.pngOutputDir = './Converted_PNGs/';
-    this.textOutputDir = './TXT_Files/';
-    this.logFile = 'PipelineLog.txt';
+    this.pdfInputDir = './1_New_File_Process_PDF_2_PNG/';
+    this.pngOutputDir = './2_Converted_PNGs/';
+    this.textOutputDir = './3_OCR_TXT_Files/';
+    this.logFile = './logs/PipelineLog.txt';
     this.startTime = Date.now();
     this.pythonCmd = null; // Will be detected dynamically
   }
@@ -173,7 +173,7 @@ class PDFToTextPipeline {
     }
 
     return new Promise((resolve, reject) => {
-      const pythonProcess = spawn(this.pythonCmd, ['PDF_2_JPG.py'], {
+      const pythonProcess = spawn(this.pythonCmd, ['PDF_2_PNG.py'], {
         stdio: ['inherit', 'pipe', 'pipe']
       });
 
@@ -424,8 +424,8 @@ class PDFToTextPipeline {
       'LOG FILES GENERATED:',
       '-'.repeat(40),
       `📋 Pipeline Log: ${this.logFile}`,
-      `📄 PDF Conversion Log: ConversionLog.txt`,
-      `📊 OCR Verification: report.txt`,
+      `📄 PDF Conversion Log: logs/ConversionLog.txt`,
+      `📊 OCR Verification: logs/report.txt`,
       '',
       overallSuccess >= 90 ? '🎉 PIPELINE COMPLETED SUCCESSFULLY!' : 
       overallSuccess >= 50 ? '⚠️  PIPELINE COMPLETED WITH WARNINGS' : 
@@ -447,7 +447,7 @@ class PDFToTextPipeline {
     // Show next steps
     if (overallSuccess >= 90) {
       console.log(chalk.green('\n🎯 Next Steps:'));
-      console.log(chalk.gray('   • Review merged OCR files in TXT_Files/'));
+      console.log(chalk.gray('   • Review merged OCR files in 3_OCR_TXT_Files/'));
       console.log(chalk.gray('   • Check individual text files for accuracy'));
       console.log(chalk.gray('   • Archive or remove processed PDFs if desired'));
     } else if (overallSuccess >= 50) {

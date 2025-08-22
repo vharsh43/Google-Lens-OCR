@@ -1,0 +1,181 @@
+# OCR Web Platform - Production Docker Compose
+# Complete containerized setup with zero local dependencies
+
+version: '3.8'
+
+networks:
+  ocr-network:
+    driver: bridge
+    name: ocr-platform-network
+
+volumes:
+  postgres_data:
+    name: ocr-postgres-data
+  redis_data:
+    name: ocr-redis-data
+  uploads_data:
+    name: ocr-uploads-data
+  logs_data:
+    name: ocr-logs-data
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: ocr-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ocr_platform
+      POSTGRES_USER: ocr_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_dev_password_123}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - ocr-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ocr_user -d ocr_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Redis Cache & Queue
+  redis:
+    image: redis:7-alpine
+    container_name: ocr-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ocr-network
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # Web Application
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: ocr-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Database
+      DATABASE_URL: postgresql://ocr_user:${POSTGRES_PASSWORD:-secure_dev_password_123}@postgres:5432/ocr_platform
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      
+      # File Configuration
+      UPLOAD_DIR: /app/uploads
+      OCR_LOGS_DIR: /app/logs
+      
+      # Worker Configuration
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      
+      # Application
+      NODE_ENV: production
+      
+      # Security
+      ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:-dev-encryption-secret-change-in-production}
+    volumes:
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
+    networks:
+      - ocr-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Queue Worker
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: ocr-worker
+    restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_URL: postgresql://ocr_user:${POSTGRES_PASSWORD:-secure_dev_password_123}@postgres:5432/ocr_platform
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      
+      # File Configuration
+      UPLOAD_DIR: /app/uploads
+      OCR_LOGS_DIR: /app/logs
+      PDF_SCRIPT_PATH: /app/scripts/PDF_2_PNG.py
+      OCR_SCRIPT_PATH: /app/scripts/batch-process.js
+      
+      # Python Configuration
+      PYTHON_PATH: /usr/bin/python3
+      
+      # Worker Configuration
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      
+      # Application
+      NODE_ENV: production
+    volumes:
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
+    networks:
+      - ocr-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "1.0"
+        reservations:
+          memory: 512M
+          cpus: "0.5"
+
+  # Redis Commander (Optional - for queue monitoring)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: ocr-redis-commander
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: "local:redis:6379"
+      HTTP_USER: ${REDIS_COMMANDER_USER:-admin}
+      HTTP_PASSWORD: ${REDIS_COMMANDER_PASSWORD:-admin123}
+    ports:
+      - "8081:8081"
+    networks:
+      - ocr-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    profiles:
+      - monitoring

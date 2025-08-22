@@ -1,0 +1,91 @@
+# OCR Queue Worker - Python + Node.js Hybrid Container
+# Handles background OCR processing with PDF conversion and text extraction
+
+FROM node:18-alpine AS base
+
+# Install system dependencies for Python and OCR processing
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    python3-dev \
+    gcc \
+    g++ \
+    musl-dev \
+    libffi-dev \
+    make \
+    libc6-compat \
+    curl \
+    clang-dev \
+    llvm-dev \
+    cmake \
+    pkgconfig \
+    jpeg-dev \
+    zlib-dev \
+    freetype-dev \
+    lcms2-dev \
+    openjpeg-dev \
+    tiff-dev \
+    tk-dev \
+    tcl-dev
+
+# Create symbolic link for python command
+RUN ln -sf python3 /usr/bin/python
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files for Node.js dependencies
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Install Node.js dependencies
+RUN npm ci --only=production
+
+# Install Python dependencies for OCR processing
+# Install lighter-weight packages first, then PyMuPDF
+RUN pip3 install --no-cache-dir --break-system-packages \
+    tqdm \
+    Pillow
+
+# Try to install PyMuPDF with pre-built wheel or fallback to simpler version
+RUN pip3 install --no-cache-dir --break-system-packages \
+    --only-binary=all \
+    PyMuPDF || \
+    pip3 install --no-cache-dir --break-system-packages \
+    --prefer-binary \
+    PyMuPDF==1.23.26 || \
+    echo "PyMuPDF installation failed, will use alternative PDF processing"
+
+# Copy worker source code
+COPY src/workers/ ./src/workers/
+COPY src/lib/ ./src/lib/
+
+# Copy OCR processing scripts
+COPY docker-scripts/ ./scripts/
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Create necessary directories
+RUN mkdir -p /app/uploads /app/logs /app/temp
+
+# Create non-root user for security
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 worker
+
+# Set proper permissions
+RUN chown -R worker:nodejs /app
+
+# Switch to non-root user
+USER worker
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PYTHON_PATH=/usr/bin/python3
+
+# Health check for worker
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD node -e "require('./src/lib/queue-enhanced').getOCRWorker().ping().then(() => process.exit(0)).catch(() => process.exit(1))" || exit 1
+
+# Start the queue worker
+CMD ["tsx", "src/workers/queue-worker.ts"]

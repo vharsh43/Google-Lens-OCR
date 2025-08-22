@@ -1,0 +1,139 @@
+{
+  "version": 3,
+  "pages404": true,
+  "caseSensitive": false,
+  "basePath": "",
+  "redirects": [
+    {
+      "source": "/:path+/",
+      "destination": "/:path+",
+      "internal": true,
+      "statusCode": 308,
+      "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))/$"
+    }
+  ],
+  "headers": [],
+  "rewrites": {
+    "beforeFiles": [],
+    "afterFiles": [],
+    "fallback": []
+  },
+  "dynamicRoutes": [
+    {
+      "page": "/api/jobs/files/image/[...path]",
+      "regex": "^/api/jobs/files/image/(.+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPpath": "nxtPpath"
+      },
+      "namedRegex": "^/api/jobs/files/image/(?<nxtPpath>.+?)(?:/)?$"
+    },
+    {
+      "page": "/api/jobs/[id]",
+      "regex": "^/api/jobs/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/jobs/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/api/jobs/[id]/download",
+      "regex": "^/api/jobs/([^/]+?)/download(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/jobs/(?<nxtPid>[^/]+?)/download(?:/)?$"
+    },
+    {
+      "page": "/api/jobs/[id]/files/[fileId]/preview",
+      "regex": "^/api/jobs/([^/]+?)/files/([^/]+?)/preview(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid",
+        "nxtPfileId": "nxtPfileId"
+      },
+      "namedRegex": "^/api/jobs/(?<nxtPid>[^/]+?)/files/(?<nxtPfileId>[^/]+?)/preview(?:/)?$"
+    },
+    {
+      "page": "/api/jobs/[id]/process",
+      "regex": "^/api/jobs/([^/]+?)/process(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/jobs/(?<nxtPid>[^/]+?)/process(?:/)?$"
+    },
+    {
+      "page": "/api/jobs/[id]/retry",
+      "regex": "^/api/jobs/([^/]+?)/retry(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/jobs/(?<nxtPid>[^/]+?)/retry(?:/)?$"
+    },
+    {
+      "page": "/api/jobs/[id]/status",
+      "regex": "^/api/jobs/([^/]+?)/status(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/jobs/(?<nxtPid>[^/]+?)/status(?:/)?$"
+    },
+    {
+      "page": "/api/sse/jobs/[id]",
+      "regex": "^/api/sse/jobs/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/sse/jobs/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/jobs/[id]",
+      "regex": "^/jobs/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/jobs/(?<nxtPid>[^/]+?)(?:/)?$"
+    }
+  ],
+  "staticRoutes": [
+    {
+      "page": "/",
+      "regex": "^/(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/(?:/)?$"
+    },
+    {
+      "page": "/_not-found",
+      "regex": "^/_not\\-found(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_not\\-found(?:/)?$"
+    },
+    {
+      "page": "/jobs",
+      "regex": "^/jobs(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/jobs(?:/)?$"
+    },
+    {
+      "page": "/upload",
+      "regex": "^/upload(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/upload(?:/)?$"
+    }
+  ],
+  "dataRoutes": [],
+  "rsc": {
+    "header": "rsc",
+    "varyHeader": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "prefetchHeader": "next-router-prefetch",
+    "didPostponeHeader": "x-nextjs-postponed",
+    "contentTypeHeader": "text/x-component",
+    "suffix": ".rsc",
+    "prefetchSuffix": ".prefetch.rsc",
+    "prefetchSegmentHeader": "next-router-segment-prefetch",
+    "prefetchSegmentSuffix": ".segment.rsc",
+    "prefetchSegmentDirSuffix": ".segments"
+  },
+  "rewriteHeaders": {
+    "pathHeader": "x-nextjs-rewritten-path",
+    "queryHeader": "x-nextjs-rewritten-query"
+  }
+}

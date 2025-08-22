@@ -1,0 +1,114 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Job {
+  id              String    @id @default(cuid())
+  name            String
+  description     String?
+  status          JobStatus @default(PENDING)
+  priority        Int       @default(0)
+  progress        Int       @default(0)
+  totalFiles      Int       @default(0)
+  processedFiles  Int       @default(0)
+  successfulFiles Int       @default(0)
+  failedFiles     Int       @default(0)
+  
+  configuration   Json      @default("{}")
+  errorMessage    String?
+  metadata        Json      @default("{}")
+  
+  files           File[]
+  
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([status])
+  @@index([createdAt])
+}
+
+model File {
+  id                    String     @id @default(cuid())
+  originalName          String
+  fileName              String
+  filePath              String
+  fileSize              BigInt
+  mimeType              String?
+  checksum              String?
+  status                FileStatus @default(PENDING)
+  
+  jobId                 String
+  job                   Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  
+  processingResults     ProcessingResult[]
+  
+  processingStartedAt   DateTime?
+  processingCompletedAt DateTime?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  
+  @@index([jobId, status])
+}
+
+model ProcessingResult {
+  id                  String   @id @default(cuid())
+  
+  fileId              String
+  file                File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  
+  outputPath          String?
+  pngOutputPath       String?
+  textOutputPath      String?
+  
+  pngCount            Int      @default(0)
+  pageCount           Int      @default(0)
+  ocrConfidence       Float?
+  detectedLanguages   String[]
+  processingDuration  Int?     // in milliseconds
+  
+  metadata            Json     @default("{}")
+  errorDetails        String?
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@unique([fileId])
+}
+
+model SystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Enums
+enum JobStatus {
+  PENDING
+  READY
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum FileStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}

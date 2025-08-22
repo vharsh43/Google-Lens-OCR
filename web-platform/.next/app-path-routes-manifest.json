@@ -1,0 +1,17 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/api/health/route": "/api/health",
+  "/api/jobs/[id]/download/route": "/api/jobs/[id]/download",
+  "/api/jobs/[id]/process/route": "/api/jobs/[id]/process",
+  "/api/jobs/[id]/files/[fileId]/preview/route": "/api/jobs/[id]/files/[fileId]/preview",
+  "/api/jobs/[id]/route": "/api/jobs/[id]",
+  "/api/jobs/[id]/status/route": "/api/jobs/[id]/status",
+  "/api/jobs/files/image/[...path]/route": "/api/jobs/files/image/[...path]",
+  "/api/sse/jobs/[id]/route": "/api/sse/jobs/[id]",
+  "/api/jobs/[id]/retry/route": "/api/jobs/[id]/retry",
+  "/api/upload/route": "/api/upload",
+  "/jobs/[id]/page": "/jobs/[id]",
+  "/jobs/page": "/jobs",
+  "/page": "/",
+  "/upload/page": "/upload"
+}

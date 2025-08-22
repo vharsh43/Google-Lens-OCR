@@ -1,0 +1,38 @@
+{
+  "name": "ocr-web-platform",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "validate": "node scripts/validate-setup.js",
+    "start-platform": "node scripts/start-platform.js",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "queue:dev": "tsx src/workers/queue-worker.ts"
+  },
+  "dependencies": {
+    "next": "15.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.0.0",
+    "prisma": "^5.19.1",
+    "@prisma/client": "^5.19.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "tsx": "^4.19.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^8",
+    "eslint-config-next": "15.0.0"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  }
+}

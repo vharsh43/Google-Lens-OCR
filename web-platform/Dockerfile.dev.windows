@@ -1,0 +1,116 @@
+# OCR Web Platform - Development Dockerfile (Windows/Network-Optimized)
+# Optimized for Windows environments with network restrictions
+
+FROM node:18-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Configure npm and pip to use alternative registries if needed
+ENV npm_config_registry=https://registry.npmjs.org/
+ENV PIP_INDEX_URL=https://pypi.org/simple/
+ENV PIP_TRUSTED_HOST=pypi.org
+
+# Install system dependencies with retry logic
+RUN apk update && apk add --no-cache \
+    python3 \
+    py3-pip \
+    curl \
+    bash \
+    gcc \
+    g++ \
+    musl-dev \
+    python3-dev \
+    make \
+    build-base \
+    git
+
+# Create a simple Python test to verify connectivity
+RUN python3 -c "import urllib.request; print('Python network test passed')" || echo "Python network test failed"
+
+# Install Python packages with timeout and retry options
+# Try multiple package sources and use system packages where possible
+RUN pip3 install --break-system-packages --timeout 60 --retries 3 \
+    --trusted-host pypi.org \
+    --trusted-host pypi.python.org \
+    --trusted-host files.pythonhosted.org \
+    wheel setuptools || echo "Failed to install wheel/setuptools"
+
+# Try to install PyPDF2 and Pillow first (smaller packages)
+RUN pip3 install --break-system-packages --timeout 60 --retries 3 \
+    --trusted-host pypi.org \
+    --trusted-host pypi.python.org \
+    --trusted-host files.pythonhosted.org \
+    PyPDF2 Pillow tqdm || echo "Failed to install PyPDF2 packages"
+
+# Create a Python script to verify installations
+RUN python3 -c "
+try:
+    import PyPDF2
+    print('✅ PyPDF2 is available')
+except ImportError:
+    print('❌ PyPDF2 not available')
+
+try:
+    import PIL
+    print('✅ Pillow is available')
+except ImportError:
+    print('❌ Pillow not available')
+
+try:
+    import tqdm
+    print('✅ tqdm is available')
+except ImportError:
+    print('❌ tqdm not available')
+"
+
+# Copy package files first for better caching
+COPY package*.json ./
+
+# Install Node.js dependencies with timeout and retry
+RUN npm config set fetch-timeout 300000 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm ci --only=production=false && \
+    npm cache clean --force
+
+# Copy Prisma schema and generate client
+COPY prisma ./prisma/
+RUN npx prisma generate
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/uploads /app/logs /app/processed /app/scripts /app/scripts/src
+
+# Create non-root user for security
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 --ingroup nodejs nextjs
+
+# Copy application code
+COPY --chown=nextjs:nodejs . .
+
+# Ensure scripts directory exists and is accessible
+RUN chown -R nextjs:nodejs /app && \
+    chmod +x /app/scripts/* 2>/dev/null || true
+
+# Make Python scripts executable
+RUN find /app/scripts -name "*.py" -exec chmod +x {} \; 2>/dev/null || true
+
+# Switch to non-root user
+USER nextjs
+
+# Expose the port the app runs on
+EXPOSE 3333
+
+# Set environment variables
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3333
+ENV HOSTNAME="0.0.0.0"
+ENV PYTHON_PATH=/usr/bin/python3
+
+# Health check with longer timeout for Windows
+HEALTHCHECK --interval=45s --timeout=15s --start-period=90s --retries=3 \
+    CMD curl -f http://localhost:3333/api/health || exit 1
+
+# Default command (can be overridden by docker-compose)
+CMD ["npm", "run", "dev"]

@@ -1,0 +1,151 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ocr-postgres
+    environment:
+      POSTGRES_DB: ocr_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ocr-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ocr_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: ocr-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ocr-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command: redis-server --appendonly yes
+
+  web:
+    build:
+      context: ./web-platform
+      dockerfile: Dockerfile.dev.windows
+    container_name: ocr-web
+    ports:
+      - "3333:3333"
+    environment:
+      # Database
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/ocr_platform"
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      
+      # Application
+      NODE_ENV: development
+      PORT: 3333
+      HOSTNAME: "0.0.0.0"
+      NEXT_TELEMETRY_DISABLED: 1
+      
+      # Authentication
+      NEXTAUTH_SECRET: "dev-secret-key-change-in-production"
+      NEXTAUTH_URL: "http://localhost:3333"
+      
+      # OCR Processing
+      PYTHON_PATH: "/usr/bin/python3"
+      WORKER_CONCURRENCY: 2
+      
+      # Network settings for Windows
+      npm_config_registry: "https://registry.npmjs.org/"
+      PIP_INDEX_URL: "https://pypi.org/simple/"
+      PIP_TRUSTED_HOST: "pypi.org"
+    volumes:
+      - ./web-platform:/app
+      - /app/node_modules
+      - /app/.next
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./processed:/app/processed
+      - ./PDF_2_PNG.py:/app/scripts/PDF_2_PNG.py:ro
+      - ./PDF_2_PNG_pypdf2.py:/app/scripts/PDF_2_PNG_pypdf2.py:ro
+      - ./src:/app/scripts/src:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ocr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3333/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  worker:
+    build:
+      context: ./web-platform
+      dockerfile: Dockerfile.dev.windows
+    container_name: ocr-worker
+    environment:
+      # Database
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/ocr_platform"
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      
+      # Application
+      NODE_ENV: development
+      PORT: 3333
+      
+      # OCR Processing
+      PYTHON_PATH: "/usr/bin/python3"
+      WORKER_CONCURRENCY: 2
+      
+      # Network settings
+      npm_config_registry: "https://registry.npmjs.org/"
+      PIP_INDEX_URL: "https://pypi.org/simple/"
+      PIP_TRUSTED_HOST: "pypi.org"
+    volumes:
+      - ./web-platform:/app
+      - /app/node_modules
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./processed:/app/processed
+      - ./PDF_2_PNG.py:/app/scripts/PDF_2_PNG.py:ro
+      - ./PDF_2_PNG_pypdf2.py:/app/scripts/PDF_2_PNG_pypdf2.py:ro
+      - ./src:/app/scripts/src:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ocr-network
+    command: ["npm", "run", "queue:dev"]
+
+networks:
+  ocr-network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1450
+
+volumes:
+  postgres_data:
+  redis_data:

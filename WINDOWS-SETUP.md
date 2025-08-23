@@ -15,7 +15,20 @@ This guide helps you set up and run the OCR Platform on Windows using Docker.
 
 ## Quick Start (Recommended)
 
-### Option 1: PowerShell Script (Most Features)
+### Option 1: Network Issues Fix (If having connectivity problems)
+```powershell
+# If you're getting network/DNS errors during build
+.\start-docker-network-fix.ps1
+```
+
+**This script automatically:**
+- ✅ Diagnoses network connectivity issues
+- ✅ Configures Docker DNS settings
+- ✅ Sets up npm and pip with retry logic
+- ✅ Uses Windows-optimized build configuration
+- ✅ Provides detailed troubleshooting information
+
+### Option 2: PowerShell Script (Most Features)
 ```powershell
 # Run in PowerShell (Right-click "Run as Administrator" recommended)
 .\start-docker-windows.ps1
@@ -33,14 +46,17 @@ This guide helps you set up and run the OCR Platform on Windows using Docker.
 # Skip building (faster if no changes)
 .\start-docker-windows.ps1 -SkipBuild
 
+# Use Windows-optimized configuration
+.\start-docker-windows.ps1 -UseWindowsConfig
+
 # Auto-view logs after startup
 .\start-docker-windows.ps1 -ViewLogs
 
 # Quiet mode (minimal output)
 .\start-docker-windows.ps1 -Quiet
 
-# Combined options
-.\start-docker-windows.ps1 -SkipBuild -Quiet
+# Combined options for network issues
+.\start-docker-windows.ps1 -UseWindowsConfig -ViewLogs
 ```
 
 ### Option 2: Batch Script (Traditional)
@@ -86,6 +102,36 @@ Once started, access these services:
 - **🔄 Queue System**: Redis on localhost:6379
 
 ## Troubleshooting
+
+### Network Issues (Most Common)
+
+1. **"Name does not resolve" or "Max retries exceeded"**
+   ```powershell
+   # Use the network fix script (recommended)
+   .\start-docker-network-fix.ps1
+   
+   # OR try Windows-optimized config
+   .\start-docker-windows.ps1 -UseWindowsConfig
+   ```
+
+2. **Corporate Network/Firewall Issues**
+   ```
+   Solutions:
+   1. Contact IT about Docker Hub and PyPI access
+   2. Configure proxy settings in Docker Desktop
+   3. Try different network (mobile hotspot)
+   4. Use VPN if company allows
+   ```
+
+3. **DNS Resolution Problems**
+   ```powershell
+   # Test DNS resolution
+   nslookup registry.npmjs.org
+   nslookup pypi.org
+   
+   # If DNS fails, update Docker daemon.json manually:
+   # Add "dns": ["8.8.8.8", "8.8.4.4"] to daemon.json
+   ```
 
 ### Docker Issues
 

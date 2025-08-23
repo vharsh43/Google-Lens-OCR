@@ -38,8 +38,10 @@ interface OCRResult {
 export class OCRProcessor {
   private pythonPath: string | null = null;
   private pdfScriptPath: string;
+  private fallbackPdfScriptPath: string;
   private ocrScriptPath: string;
   private logsDir: string;
+  private usingFallbackScript: boolean = false;
   private webSocketEmitters: any = null;
 
   constructor() {
@@ -53,6 +55,8 @@ export class OCRProcessor {
       ? resolve(process.cwd(), process.env.PDF_SCRIPT_PATH)
       : join(projectRoot, 'PDF_2_PNG.py');
       
+    this.fallbackPdfScriptPath = join(projectRoot, 'PDF_2_PNG_pypdf2.py');
+      
     this.ocrScriptPath = process.env.OCR_SCRIPT_PATH 
       ? resolve(process.cwd(), process.env.OCR_SCRIPT_PATH)
       : join(projectRoot, 'src', 'batch-process.js');
@@ -62,7 +66,8 @@ export class OCRProcessor {
       : join(projectRoot, 'logs');
       
     console.log('🔧 OCRProcessor paths:');
-    console.log('  - PDF Script:', this.pdfScriptPath);
+    console.log('  - Primary PDF Script:', this.pdfScriptPath);
+    console.log('  - Fallback PDF Script:', this.fallbackPdfScriptPath);
     console.log('  - OCR Script:', this.ocrScriptPath);
     console.log('  - Logs Dir:', this.logsDir);
 
@@ -152,18 +157,30 @@ export class OCRProcessor {
    * Validate that all required scripts and directories exist
    */
   private async validatePaths(): Promise<void> {
-    const pathsToCheck = [
-      { path: this.pdfScriptPath, name: 'PDF_2_PNG.py script' },
-      { path: this.ocrScriptPath, name: 'batch-process.js script' },
-    ];
-
-    for (const { path, name } of pathsToCheck) {
+    // Try primary PDF script first, fallback to PyPDF2 version
+    try {
+      await access(this.pdfScriptPath);
+      console.log(`✅ Found primary PDF script: ${this.pdfScriptPath}`);
+      this.usingFallbackScript = false;
+    } catch (error) {
+      console.log(`⚠️ Primary PDF script not found: ${this.pdfScriptPath}`);
+      
       try {
-        await access(path);
-        console.log(`✅ Found ${name}: ${path}`);
-      } catch (error) {
-        throw new Error(`❌ Required ${name} not found at: ${path}\nPlease ensure the file exists or update the environment variable.`);
+        await access(this.fallbackPdfScriptPath);
+        console.log(`✅ Found fallback PDF script: ${this.fallbackPdfScriptPath}`);
+        this.usingFallbackScript = true;
+        this.pdfScriptPath = this.fallbackPdfScriptPath; // Update to use fallback
+      } catch (fallbackError) {
+        throw new Error(`❌ Neither primary nor fallback PDF script found.\nPrimary: ${this.pdfScriptPath}\nFallback: ${this.fallbackPdfScriptPath}\nPlease ensure at least one script exists.`);
       }
+    }
+
+    // Check OCR script
+    try {
+      await access(this.ocrScriptPath);
+      console.log(`✅ Found OCR script: ${this.ocrScriptPath}`);
+    } catch (error) {
+      throw new Error(`❌ Required OCR script not found at: ${this.ocrScriptPath}\nPlease ensure the file exists or update the environment variable.`);
     }
 
     // Ensure logs directory exists
@@ -172,6 +189,13 @@ export class OCRProcessor {
       console.log(`✅ Logs directory ready: ${this.logsDir}`);
     } catch (error) {
       throw new Error(`Failed to create logs directory: ${this.logsDir}`);
+    }
+
+    // Log which PDF conversion method will be used
+    if (this.usingFallbackScript) {
+      console.log(`⚠️ Using PyPDF2 fallback method (text-based conversion only)`);
+    } else {
+      console.log(`✅ Using PyMuPDF method (full visual conversion)`);
     }
   }
 

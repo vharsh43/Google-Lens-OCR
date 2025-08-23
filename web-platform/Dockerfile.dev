@@ -7,19 +7,30 @@ FROM node:18-alpine
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies including build tools for PyMuPDF
+# Install system dependencies including complete build environment for PyMuPDF
 RUN apk update && apk add --no-cache \
     python3 \
     py3-pip \
     curl \
     bash \
     gcc \
+    g++ \
     musl-dev \
-    python3-dev
+    python3-dev \
+    make \
+    cmake \
+    freetype-dev \
+    jpeg-dev \
+    zlib-dev \
+    libffi-dev \
+    openssl-dev \
+    build-base
 
-# Install PyMuPDF (required for PDF to PNG conversion)
-RUN pip3 install --break-system-packages --no-cache-dir PyMuPDF tqdm || \
-    (echo "PyMuPDF installation failed" && exit 1)
+# Install PyMuPDF with all dependencies
+RUN pip3 install --break-system-packages --no-cache-dir wheel setuptools && \
+    pip3 install --break-system-packages --no-cache-dir PyMuPDF tqdm || \
+    (echo "⚠️ PyMuPDF installation failed, installing PyPDF2 as fallback" && \
+     pip3 install --break-system-packages --no-cache-dir PyPDF2 Pillow tqdm)
 
 # Copy package files first for better caching
 COPY package*.json ./

@@ -5,15 +5,11 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { 
-  Upload, 
-  Briefcase, 
-  BarChart3, 
-  Settings, 
   Menu,
   X,
   FileText,
   Home,
-  PieChart
+  Trash
 } from 'lucide-react'
 
 interface NavigationProps {
@@ -32,40 +28,33 @@ export function Navigation({ className = '' }: NavigationProps) {
       current: pathname === '/'
     },
     {
-      name: 'Jobs',
-      href: '/jobs',
-      icon: Briefcase,
-      current: pathname.startsWith('/jobs')
-    },
-    {
-      name: 'Upload',
-      href: '/upload',
-      icon: Upload,
-      current: pathname === '/upload'
-    },
-    {
-      name: 'Analytics',
-      href: '/analytics',
-      icon: PieChart,
-      current: pathname === '/analytics'
+      name: 'Database Cleanup',
+      href: '/cleanup',
+      icon: Trash,
+      current: pathname === '/cleanup'
     },
   ]
 
   return (
-    <nav className={`bg-white shadow-sm border-b ${className}`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <nav className={`bg-white shadow-sm border-b border-slate-200 sticky top-0 z-50 ${className}`}>
+      <div className="w-full px-6">
         <div className="flex justify-between h-16">
           {/* Logo and primary nav */}
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
-              <Link href="/" className="flex items-center space-x-2">
-                <FileText className="h-8 w-8 text-primary" />
-                <span className="font-bold text-xl">OCR Platform</span>
+              <Link href="/" className="flex items-center space-x-3 group">
+                <div className="p-2 bg-slate-900 rounded-lg group-hover:bg-slate-800 transition-colors duration-200">
+                  <FileText className="h-5 w-5 text-white" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-semibold text-lg text-slate-900">OCR Platform</span>
+                  <span className="text-xs text-slate-500 -mt-0.5">Smart Document Processing</span>
+                </div>
               </Link>
             </div>
             
             {/* Desktop navigation */}
-            <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
+            <div className="hidden sm:ml-6 sm:flex sm:items-center sm:space-x-2">
               {navigation.map((item) => {
                 const Icon = item.icon
                 return (
@@ -73,10 +62,10 @@ export function Navigation({ className = '' }: NavigationProps) {
                     key={item.name}
                     href={item.href}
                     className={`
-                      inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium
+                      inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
                       ${item.current
-                        ? 'border-primary text-primary'
-                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                       }
                     `}
                   >
@@ -88,8 +77,12 @@ export function Navigation({ className = '' }: NavigationProps) {
             </div>
           </div>
 
-          {/* Right side */}
-          <div className="hidden sm:ml-6 sm:flex sm:items-center space-x-4">
+          {/* Right side - Status indicator */}
+          <div className="hidden sm:ml-6 sm:flex sm:items-center">
+            <div className="flex items-center space-x-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-lg">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              <span className="text-xs font-medium text-green-700">System Online</span>
+            </div>
           </div>
 
           {/* Mobile menu button */}
@@ -111,8 +104,8 @@ export function Navigation({ className = '' }: NavigationProps) {
 
       {/* Mobile menu */}
       {mobileMenuOpen && (
-        <div className="sm:hidden">
-          <div className="pt-2 pb-3 space-y-1">
+        <div className="sm:hidden border-t border-slate-200 bg-white">
+          <div className="px-6 pt-2 pb-3 space-y-1">
             {navigation.map((item) => {
               const Icon = item.icon
               return (
@@ -120,10 +113,10 @@ export function Navigation({ className = '' }: NavigationProps) {
                   key={item.name}
                   href={item.href}
                   className={`
-                    flex items-center pl-3 pr-4 py-2 border-l-4 text-base font-medium
+                    flex items-center px-3 py-3 rounded-lg text-base font-medium transition-all duration-200
                     ${item.current
-                      ? 'bg-primary/10 border-primary text-primary'
-                      : 'border-transparent text-gray-600 hover:bg-gray-50 hover:border-gray-300 hover:text-gray-800'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                     }
                   `}
                   onClick={() => setMobileMenuOpen(false)}
@@ -135,6 +128,13 @@ export function Navigation({ className = '' }: NavigationProps) {
             })}
           </div>
           
+          {/* Mobile status indicator */}
+          <div className="px-6 pb-4">
+            <div className="flex items-center justify-center space-x-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              <span className="text-sm font-medium text-green-700">System Online</span>
+            </div>
+          </div>
         </div>
       )}
     </nav>
@@ -148,28 +148,22 @@ export function SidebarNavigation({ className = '' }: NavigationProps) {
   const navigation = [
     {
       name: 'Dashboard',
-      href: '/jobs',
-      icon: Briefcase,
-      current: pathname.startsWith('/jobs')
+      href: '/',
+      icon: Home,
+      current: pathname === '/'
     },
     {
-      name: 'Upload',
-      href: '/upload',
-      icon: Upload,
-      current: pathname === '/upload'
-    },
-    {
-      name: 'Analytics',
-      href: '/analytics',
-      icon: BarChart3,
-      current: pathname === '/analytics'
+      name: 'Database Cleanup',
+      href: '/cleanup',
+      icon: Trash,
+      current: pathname === '/cleanup'
     },
   ]
 
   return (
     <div className={`w-64 bg-gray-50 h-full overflow-y-auto ${className}`}>
       <div className="p-4">
-        <Link href="/jobs" className="flex items-center space-x-2 mb-8">
+        <Link href="/" className="flex items-center space-x-2 mb-8">
           <FileText className="h-8 w-8 text-primary" />
           <span className="font-bold text-xl">OCR Platform</span>
         </Link>

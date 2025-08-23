@@ -1,39 +1,77 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readFile, access } from 'fs/promises';
-import { join } from 'path';
+import { readFile, stat } from 'fs/promises';
+import { join, extname } from 'path';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   try {
-    // No authentication required for image serving
     const resolvedParams = await params;
     
+    if (!resolvedParams.path || resolvedParams.path.length === 0) {
+      return NextResponse.json(
+        { error: 'File path is required' },
+        { status: 400 }
+      );
+    }
+
     // Reconstruct the file path from the URL segments
-    const filePath = decodeURIComponent(resolvedParams.path.join('/'));
+    const pathSegments = resolvedParams.path;
+    const filePath = pathSegments.join('/');
+    const fullPath = join(process.cwd(), 'processed', filePath);
     
-    // Security check: ensure the path is within allowed directories
-    // This is a basic check - in production you'd want more robust validation
-    if (!filePath.includes('ocr-temp') || filePath.includes('..')) {
+    // Security check: ensure the path is within the processed directory
+    const processedDir = join(process.cwd(), 'processed');
+    if (!fullPath.startsWith(processedDir) || filePath.includes('..')) {
       return NextResponse.json(
         { error: 'Access denied' },
         { status: 403 }
       );
     }
 
-    // Check if file exists
-    await access(filePath);
+    // Check if file exists and get stats
+    const stats = await stat(fullPath);
+    
+    if (!stats.isFile()) {
+      return NextResponse.json(
+        { error: 'Not a file' },
+        { status: 400 }
+      );
+    }
 
     // Read the file
-    const fileBuffer = await readFile(filePath);
+    const fileBuffer = await readFile(fullPath);
+    const ext = extname(fullPath).toLowerCase();
+    
+    // Determine content type
+    let contentType = 'application/octet-stream';
+    
+    switch (ext) {
+      case '.png':
+        contentType = 'image/png';
+        break;
+      case '.jpg':
+      case '.jpeg':
+        contentType = 'image/jpeg';
+        break;
+      case '.txt':
+        contentType = 'text/plain; charset=utf-8';
+        break;
+      case '.json':
+        contentType = 'application/json';
+        break;
+      case '.pdf':
+        contentType = 'application/pdf';
+        break;
+    }
 
-    // Return the image with appropriate headers
-    return new NextResponse(new Uint8Array(fileBuffer), {
+    // Return the file with appropriate headers
+    return new NextResponse(fileBuffer as BodyInit, {
       headers: {
-        'Content-Type': 'image/png',
-        'Cache-Control': 'private, max-age=3600', // Cache for 1 hour
-        'Content-Length': fileBuffer.length.toString(),
+        'Content-Type': contentType,
+        'Cache-Control': 'private, max-age=3600',
+        'Content-Length': stats.size.toString(),
       },
     });
 

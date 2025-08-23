@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,78 +8,72 @@ datasource db {
 }
 
 model Job {
-  id              String    @id @default(cuid())
+  id              String          @id @default(cuid())
   name            String
   description     String?
-  status          JobStatus @default(PENDING)
-  priority        Int       @default(0)
-  progress        Int       @default(0)
-  totalFiles      Int       @default(0)
-  processedFiles  Int       @default(0)
-  successfulFiles Int       @default(0)
-  failedFiles     Int       @default(0)
-  
-  configuration   Json      @default("{}")
+  status          JobStatus       @default(PENDING)
+  priority        Int             @default(0)
+  progress        Int             @default(0)
+  totalFiles      Int             @default(0)
+  processedFiles  Int             @default(0)
+  successfulFiles Int             @default(0)
+  failedFiles     Int             @default(0)
+  configuration   Json            @default("{}")
   errorMessage    String?
-  metadata        Json      @default("{}")
-  
-  files           File[]
-  
+  metadata        Json            @default("{}")
   startedAt       DateTime?
   completedAt     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  files           File[]
+  stages          JobStage[]
+  logs            ProcessingLog[]
+
   @@index([status])
   @@index([createdAt])
 }
 
 model File {
-  id                    String     @id @default(cuid())
+  id                    String            @id @default(cuid())
   originalName          String
   fileName              String
   filePath              String
   fileSize              BigInt
   mimeType              String?
   checksum              String?
-  status                FileStatus @default(PENDING)
-  
+  status                FileStatus        @default(PENDING)
   jobId                 String
-  job                   Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  
-  processingResults     ProcessingResult[]
-  
   processingStartedAt   DateTime?
   processingCompletedAt DateTime?
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
-  
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  job                   Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  processingResults     ProcessingResult?
+
   @@index([jobId, status])
 }
 
 model ProcessingResult {
-  id                  String   @id @default(cuid())
-  
-  fileId              String
-  file                File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
-  
-  outputPath          String?
-  pngOutputPath       String?
-  textOutputPath      String?
-  
-  pngCount            Int      @default(0)
-  pageCount           Int      @default(0)
-  ocrConfidence       Float?
-  detectedLanguages   String[]
-  processingDuration  Int?     // in milliseconds
-  
-  metadata            Json     @default("{}")
-  errorDetails        String?
-  
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  
-  @@unique([fileId])
+  id                 String   @id @default(cuid())
+  fileId             String   @unique
+  outputPath         String?
+  pngOutputPath      String?
+  textOutputPath     String?
+  pngCount           Int      @default(0)
+  pageCount          Int      @default(0)
+  failedPngPages     Int[]    @default([])
+  failedOcrPages     Int[]    @default([])
+  successfulPages    Int      @default(0)
+  totalPagesInPdf    Int      @default(0)
+  pageErrors         Json     @default("{}")
+  ocrConfidence      Float?
+  detectedLanguages  String[]
+  processingDuration Int?
+  metadata           Json     @default("{}")
+  errorDetails       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  file               File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
 }
 
 model SystemConfig {
@@ -90,12 +81,47 @@ model SystemConfig {
   key         String   @unique
   value       Json
   description String?
-  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
-// Enums
+model JobStage {
+  id           String      @id @default(cuid())
+  jobId        String
+  stage        StageType
+  status       StageStatus @default(PENDING)
+  startedAt    DateTime?
+  completedAt  DateTime?
+  progress     Int         @default(0)
+  totalSteps   Int         @default(0)
+  currentStep  Int         @default(0)
+  details      Json        @default("{}")
+  logs         String[]    @default([])
+  errorMessage String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  job          Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, stage])
+  @@index([status])
+}
+
+model ProcessingLog {
+  id        String     @id @default(cuid())
+  jobId     String
+  stageId   String?
+  timestamp DateTime   @default(now())
+  level     LogLevel
+  stage     StageType?
+  message   String
+  metadata  Json?
+  createdAt DateTime   @default(now())
+  job       Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, timestamp])
+  @@index([level])
+}
+
 enum JobStatus {
   PENDING
   READY
@@ -111,4 +137,31 @@ enum FileStatus {
   PROCESSING
   COMPLETED
   FAILED
+}
+
+enum StageType {
+  INITIALIZATION
+  FILE_VALIDATION
+  PDF_CONVERSION
+  OCR_PROCESSING
+  TEXT_EXTRACTION
+  QUALITY_ANALYSIS
+  FILE_ORGANIZATION
+  FINALIZATION
+}
+
+enum StageStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
 }

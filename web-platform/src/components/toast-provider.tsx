@@ -42,12 +42,15 @@ export function ToastProvider({ children }: ToastProviderProps) {
     const id = Math.random().toString(36).substring(2, 9)
     const newToast = { ...toast, id }
     
-    setToasts(current => [...current, newToast])
-
-    // Auto remove after duration
+    // Defer state update to avoid React 19 render cycle issues
     setTimeout(() => {
-      removeToast(id)
-    }, toast.duration || 5000)
+      setToasts(current => [...current, newToast])
+      
+      // Auto remove after duration
+      setTimeout(() => {
+        removeToast(id)
+      }, toast.duration || 5000)
+    }, 0)
   }
 
   const removeToast = (id: string) => {

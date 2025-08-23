@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "concurrently \"tsx server.ts\" \"npm run queue:dev\" --names \"web,queue\" --prefix-colors \"blue,green\"",
+    "dev:web-only": "tsx server.ts",
+    "dev:next-only": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -22,7 +24,11 @@
     "docker:validate": "node scripts/docker-validate.js",
     "docker:logs": "docker compose logs -f",
     "docker:stop": "docker compose down",
-    "docker:restart": "docker compose restart"
+    "docker:restart": "docker compose restart",
+    "dev:docker": "docker compose -f docker-compose.dev.yml up --build",
+    "dev:docker-detached": "docker compose -f docker-compose.dev.yml up --build -d",
+    "dev:docker-logs": "docker compose -f docker-compose.dev.yml logs -f",
+    "dev:docker-stop": "docker compose -f docker-compose.dev.yml down"
   },
   "dependencies": {
     "@prisma/client": "^6.14.0",
@@ -48,6 +54,8 @@
     "react-dom": "^19.1.1",
     "react-dropzone": "^14.3.7",
     "recharts": "^2.15.0",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
     "sonner": "^1.7.0",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",

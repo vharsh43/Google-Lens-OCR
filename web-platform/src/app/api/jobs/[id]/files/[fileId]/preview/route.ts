@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { readdir, readFile } from 'fs/promises';
+import { readdir, readFile, stat } from 'fs/promises';
 import { join, extname } from 'path';
 
 export async function GET(
@@ -13,47 +12,15 @@ export async function GET(
     const fileId = resolvedParams.fileId;
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'text'; // text, images
-    const limit = parseInt(searchParams.get('limit') || '5'); // Limit preview items
-
-    // Get job and file with processing results
-    const job = await prisma.job.findUnique({
-      where: {
-        id: jobId,
-      },
-      include: {
-        files: {
-          where: {
-            id: fileId,
-            status: 'COMPLETED',
-          },
-          include: {
-            processingResults: true,
-          },
-        },
-      },
-    });
-
-    if (!job || job.files.length === 0) {
-      return NextResponse.json(
-        { error: 'File not found or not completed' },
-        { status: 404 }
-      );
-    }
-
-    const file = job.files[0];
-    const result = file.processingResults?.[0];
-
-    if (!result) {
-      return NextResponse.json(
-        { error: 'No processing results found' },
-        { status: 404 }
-      );
-    }
+    const limit = parseInt(searchParams.get('limit') || '10'); // Limit preview items
+    const offset = parseInt(searchParams.get('offset') || '0'); // Offset for pagination
+    
+    console.log(`📄 Preview API called - JobId: ${jobId}, FileId: ${fileId}, Type: ${type}, Limit: ${limit}, Offset: ${offset}`);
 
     if (type === 'text') {
-      return await getTextPreview(result.textOutputPath, limit);
+      return await getTextPreview(jobId, fileId, limit, offset);
     } else if (type === 'images') {
-      return await getImagePreview(result.pngOutputPath, limit);
+      return await getImagePreview(jobId, fileId, limit, offset);
     } else {
       return NextResponse.json(
         { error: 'Invalid preview type. Use "text" or "images"' },
@@ -74,87 +41,125 @@ export async function GET(
   }
 }
 
-async function getTextPreview(textOutputPath: string | null, limit: number) {
+async function getTextPreview(jobId: string, fileId: string, limit: number, offset: number = 0) {
   try {
-    if (!textOutputPath) {
-      return NextResponse.json({ content: [] });
+    const textDir = join(process.cwd(), 'processed', jobId, fileId, 'text');
+    
+    try {
+      await stat(textDir);
+    } catch {
+      // No text files exist yet
+      return NextResponse.json({ 
+        content: [],
+        totalFiles: 0,
+        previewedFiles: 0,
+        message: "No processed text files available yet"
+      });
     }
 
-    // Read text files from the output directory
-    const files = await readdir(textOutputPath);
-    const textFiles = files
-      .filter(f => f.toLowerCase().endsWith('.txt'))
-      .sort()
-      .slice(0, limit);
+    // Get text files from the directory
+    const files = await readdir(textDir);
+    const allTextFiles = files.filter(f => extname(f).toLowerCase() === '.txt').sort();
+    const textFiles = allTextFiles.slice(offset, offset + limit);
+    
+    if (textFiles.length === 0) {
+      return NextResponse.json({ 
+        content: [],
+        totalFiles: 0,
+        previewedFiles: 0,
+        message: "No text files found"
+      });
+    }
 
     const content: string[] = [];
-
-    for (const textFile of textFiles) {
+    
+    for (const file of textFiles) {
       try {
-        const filePath = join(textOutputPath, textFile);
-        const fileContent = await readFile(filePath, 'utf-8');
-        
-        // Limit content length to prevent large responses
-        const truncatedContent = fileContent.length > 2000 
-          ? fileContent.substring(0, 2000) + '...\n\n[Content truncated - download full file to see complete text]'
-          : fileContent;
-        
-        content.push(truncatedContent);
+        const filePath = join(textDir, file);
+        const textContent = await readFile(filePath, 'utf-8');
+        content.push(`📄 ${file}\n\n${textContent}`);
       } catch (error) {
-        console.warn(`Failed to read text file ${textFile}:`, error);
-        content.push(`[Error reading file: ${textFile}]`);
+        console.error(`Error reading ${file}:`, error);
+        content.push(`📄 ${file}\n\n⚠️ Error reading file content`);
       }
     }
-
+    
     return NextResponse.json({ 
       content,
-      totalFiles: files.filter(f => f.toLowerCase().endsWith('.txt')).length,
-      previewedFiles: textFiles.length
+      totalFiles: allTextFiles.length,
+      previewedFiles: content.length,
+      currentPage: Math.floor(offset / limit) + 1,
+      totalPages: Math.ceil(allTextFiles.length / limit),
+      hasNextPage: offset + limit < allTextFiles.length,
+      hasPrevPage: offset > 0
     });
 
   } catch (error) {
     console.error('Text preview error:', error);
-    return NextResponse.json({ 
-      error: 'Failed to load text preview',
-      content: [] 
-    });
+    return NextResponse.json(
+      { error: 'Failed to load text preview', content: [], totalFiles: 0, previewedFiles: 0, currentPage: 1, totalPages: 0, hasNextPage: false, hasPrevPage: false },
+      { status: 500 }
+    );
   }
 }
 
-async function getImagePreview(pngOutputPath: string | null, limit: number) {
+async function getImagePreview(jobId: string, fileId: string, limit: number, offset: number = 0) {
   try {
-    if (!pngOutputPath) {
-      return NextResponse.json({ urls: [] });
+    const pngsDir = join(process.cwd(), 'processed', jobId, fileId, 'pngs');
+    
+    try {
+      await stat(pngsDir);
+    } catch {
+      // No PNG files exist yet
+      return NextResponse.json({ 
+        urls: [],
+        totalFiles: 0,
+        previewedFiles: 0,
+        message: "No processed images available yet"
+      });
     }
 
-    // Read PNG files from the output directory
-    const files = await readdir(pngOutputPath);
-    const imageFiles = files
-      .filter(f => f.toLowerCase().endsWith('.png'))
-      .sort()
-      .slice(0, limit);
-
-    // For now, we'll return file paths that can be served statically
-    // In a production environment, you'd want to serve these through a secure endpoint
-    // or upload them to a CDN/cloud storage with signed URLs
+    // Get image files from the directory
+    const files = await readdir(pngsDir);
+    const allImageFiles = files
+      .filter(f => {
+        const ext = extname(f).toLowerCase();
+        return ['.png', '.jpg', '.jpeg'].includes(ext);
+      })
+      .sort(); // Sort to maintain page order
+    const imageFiles = allImageFiles.slice(offset, offset + limit);
     
-    const urls = imageFiles.map(file => {
-      // Create a secure URL pattern for serving the images
-      // This would need to be implemented as a separate API endpoint
-      return `/api/jobs/files/image/${encodeURIComponent(join(pngOutputPath, file))}`;
-    });
+    if (imageFiles.length === 0) {
+      return NextResponse.json({ 
+        urls: [],
+        totalFiles: 0,
+        previewedFiles: 0,
+        message: "No image files found"
+      });
+    }
 
+    // Generate URLs for the actual images
+    const urls = imageFiles.map(file => {
+      // Create URL that points to our file serving endpoint
+      const encodedPath = encodeURIComponent(`${jobId}/${fileId}/pngs/${file}`);
+      return `/api/jobs/files/image/${encodedPath}`;
+    });
+    
     return NextResponse.json({ 
       urls,
-      totalFiles: files.filter(f => f.toLowerCase().endsWith('.png')).length,
-      previewedFiles: imageFiles.length
+      totalFiles: allImageFiles.length,
+      previewedFiles: urls.length,
+      currentPage: Math.floor(offset / limit) + 1,
+      totalPages: Math.ceil(allImageFiles.length / limit),
+      hasNextPage: offset + limit < allImageFiles.length,
+      hasPrevPage: offset > 0
     });
 
   } catch (error) {
     console.error('Image preview error:', error);
-    return NextResponse.json({ 
-      error: 'Failed to load image preview',
-      urls: [] 
-    });
+    return NextResponse.json(
+      { error: 'Failed to load image preview', urls: [], totalFiles: 0, previewedFiles: 0, currentPage: 1, totalPages: 0, hasNextPage: false, hasPrevPage: false },
+      { status: 500 }
+    );
   }
 }

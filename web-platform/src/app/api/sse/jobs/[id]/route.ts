@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { queueManager } from '@/lib/queue';
+import { enhancedQueueManager } from '@/lib/queue-enhanced';
 
 export async function GET(
   request: NextRequest,
@@ -25,18 +25,45 @@ export async function GET(
     const stream = new ReadableStream({
       start(controller) {
         const encoder = new TextEncoder();
+        let isControllerClosed = false;
+        let pollInterval: NodeJS.Timeout | null = null;
         
         // Send initial connection message
         const send = (data: any) => {
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(data)}\n\n`)
-          );
+          if (isControllerClosed) return;
+          try {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(data)}\n\n`)
+            );
+          } catch (error) {
+            console.warn('SSE send error (controller may be closed):', error);
+            isControllerClosed = true;
+          }
+        };
+        
+        const closeController = () => {
+          if (isControllerClosed) return;
+          isControllerClosed = true;
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+          try {
+            controller.close();
+          } catch (error) {
+            console.warn('SSE close error (already closed):', error);
+          }
         };
 
         send({ type: 'connected', jobId, timestamp: new Date().toISOString() });
 
         // Poll for job updates
-        const pollInterval = setInterval(async () => {
+        pollInterval = setInterval(async () => {
+          if (isControllerClosed) {
+            if (pollInterval) clearInterval(pollInterval);
+            return;
+          }
+          
           try {
             const updatedJob = await prisma.job.findUnique({
               where: { id: jobId },
@@ -58,7 +85,7 @@ export async function GET(
             let queueStatus = null;
             if (updatedJob.status === 'QUEUED' || updatedJob.status === 'PROCESSING') {
               try {
-                const queueJob = await queueManager.getJobStatus(jobId);
+                const queueJob = await enhancedQueueManager.getJobStatus(jobId);
                 if (queueJob) {
                   queueStatus = {
                     progress: queueJob.progress || 0,
@@ -133,8 +160,8 @@ export async function GET(
               });
               
               setTimeout(() => {
-                controller.close();
-              }, 5000); // Keep connection open for 5 seconds after completion
+                closeController();
+              }, 3000); // Keep connection open for 3 seconds after completion
             }
 
           } catch (error) {
@@ -149,19 +176,17 @@ export async function GET(
 
         // Cleanup on close
         request.signal.addEventListener('abort', () => {
-          clearInterval(pollInterval);
-          controller.close();
+          closeController();
         });
 
         // Auto-cleanup after 30 minutes
         setTimeout(() => {
-          clearInterval(pollInterval);
           send({
             type: 'timeout',
             message: 'Connection timed out',
             timestamp: new Date().toISOString(),
           });
-          controller.close();
+          closeController();
         }, 30 * 60 * 1000);
       },
     });

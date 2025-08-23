@@ -1,0 +1,120 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment files
+#.env
+#.env.local
+#.env.*.local
+#.env.development.local
+#.env.test.local
+#.env.production.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker volumes and data
+#postgres_data/
+#redis_data/
+#uploads_data/
+#logs_data/
+#processed_data/
+
+# Processing directories
+uploads/
+processed/
+2_Converted_PNGs/
+3_OCR_TXT_Files/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Build outputs
+dist/
+build/
+.next/
+.vercel/
+
+# Runtime files
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Grunt intermediate storage
+.grunt
+
+# Bower dependency directory
+bower_components
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+#.env
+
+# parcel-bundler cache
+.cache
+.parcel-cache
+
+# Docker specific
+docker-compose.override.yml
+
+# Database files
+*.sqlite
+*.db
+
+# Prisma
+prisma/migrations/
+
+# Test files
+test-results/
+playwright-report/
+playwright/.cache/

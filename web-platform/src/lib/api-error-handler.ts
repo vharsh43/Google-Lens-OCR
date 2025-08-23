@@ -9,10 +9,29 @@ interface ApiError {
 
 export class ApiErrorHandler {
   static handle(error: any): ApiError {
-    console.error('API Error:', error)
+    // Only log non-empty errors to avoid console spam
+    if (error && (typeof error !== 'object' || Object.keys(error).length > 0)) {
+      console.error('API Error:', error)
+    }
+
+    // Handle null/undefined errors
+    if (!error) {
+      return {
+        message: 'An unknown error occurred.',
+        code: 'NULL_ERROR'
+      }
+    }
+
+    // Handle empty object errors
+    if (typeof error === 'object' && Object.keys(error).length === 0) {
+      return {
+        message: 'An unexpected server error occurred.',
+        code: 'EMPTY_ERROR'
+      }
+    }
 
     // Network errors
-    if (error instanceof TypeError && error.message.includes('fetch')) {
+    if (error instanceof TypeError && error.message && error.message.includes('fetch')) {
       return {
         message: 'Network error. Please check your connection and try again.',
         status: 0,
@@ -32,14 +51,31 @@ export class ApiErrorHandler {
     // Standard errors
     if (error instanceof Error) {
       return {
-        message: error.message,
+        message: error.message || 'An error occurred',
         code: 'STANDARD_ERROR'
+      }
+    }
+
+    // String errors
+    if (typeof error === 'string') {
+      return {
+        message: error,
+        code: 'STRING_ERROR'
+      }
+    }
+
+    // Object with message property
+    if (error && typeof error === 'object' && error.message) {
+      return {
+        message: error.message,
+        status: error.status,
+        code: error.code || 'OBJECT_ERROR'
       }
     }
 
     // Unknown errors
     return {
-      message: 'An unexpected error occurred. Please try again.',
+      message: `An unexpected error occurred: ${JSON.stringify(error)}`,
       code: 'UNKNOWN_ERROR'
     }
   }
@@ -94,11 +130,19 @@ export class ApiErrorHandler {
     const timeoutId = setTimeout(() => controller.abort(), timeout)
 
     try {
+      // Don't set Content-Type for FormData - let browser handle it
+      const headers: Record<string, string> = {}
+      
+      // Only set JSON content type if body is not FormData
+      if (options.body && !(options.body instanceof FormData)) {
+        headers['Content-Type'] = 'application/json'
+      }
+      
       const response = await fetch(url, {
         ...options,
         signal: controller.signal,
         headers: {
-          'Content-Type': 'application/json',
+          ...headers,
           ...options.headers,
         },
       })
@@ -112,6 +156,7 @@ export class ApiErrorHandler {
       return response
     } catch (error) {
       clearTimeout(timeoutId)
+      
       
       if (error instanceof Error && error.name === 'AbortError') {
         throw new Error('Request timed out. Please try again.')
@@ -217,7 +262,21 @@ export const validateFile = (file: File): string[] => {
     return errors
   }
 
+  // Ensure file has required properties
+  if (!file.name || typeof file.name !== 'string') {
+    errors.push('File has no name or invalid name')
+    return errors
+  }
+
+  if (typeof file.size !== 'number') {
+    errors.push('File has invalid size')
+    return errors
+  }
+
   // Check for PDF by MIME type and file extension
+  const fileType = file.type || ''
+  const fileName = file.name
+  
   const isPdfMimeType = [
     'application/pdf',
     'application/x-pdf',
@@ -225,22 +284,22 @@ export const validateFile = (file: File): string[] => {
     'applications/vnd.pdf',
     'text/pdf',
     'text/x-pdf'
-  ].includes(file.type)
+  ].includes(fileType)
   
-  const isPdfExtension = file.name.toLowerCase().endsWith('.pdf')
+  const isPdfExtension = fileName.toLowerCase().endsWith('.pdf')
   
   if (!isPdfMimeType && !isPdfExtension) {
-    errors.push(`File "${file.name}" is not a PDF. Only PDF files are supported.`)
+    errors.push(`File "${fileName}" is not a PDF. Only PDF files are supported.`)
   } else if (!isPdfMimeType && isPdfExtension) {
     // File has .pdf extension but wrong MIME type - likely browser issue, warn but allow
-    console.warn(`File "${file.name}" has .pdf extension but MIME type "${file.type}". Allowing upload.`)
+    console.warn(`File "${fileName}" has .pdf extension but MIME type "${fileType}". Allowing upload.`)
   }
 
   // Only warn about very large files (>1GB) but don't block them
   const warningSize = 1024 * 1024 * 1024 // 1GB
   if (file.size > warningSize) {
     // This is just a warning, not an error
-    console.warn(`Large file detected: ${file.name} (${(file.size / 1024 / 1024 / 1024).toFixed(2)}GB). Processing may take longer.`)
+    console.warn(`Large file detected: ${fileName} (${(file.size / 1024 / 1024 / 1024).toFixed(2)}GB). Processing may take longer.`)
   }
 
   if (file.size === 0) {
@@ -253,10 +312,16 @@ export const validateFile = (file: File): string[] => {
 export const validateJobName = (name: string): string[] => {
   const errors: string[] = []
   
-  if (!name || name.trim().length === 0) {
-    errors.push('Job name is required')
-  } else if (name.length > 100) {
-    errors.push('Job name must be less than 100 characters')
+  // Job name is now optional - only validate if provided
+  if (name && name.trim().length > 0) {
+    if (name.length > 100) {
+      errors.push('Job name must be less than 100 characters')
+    }
+    
+    // Check for invalid characters
+    if (!/^[a-zA-Z0-9\s\-_.,():/]+$/.test(name)) {
+      errors.push('Job name contains invalid characters')
+    }
   }
 
   return errors

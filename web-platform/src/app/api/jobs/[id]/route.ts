@@ -42,18 +42,25 @@ export async function GET(
     };
 
     const processingTimes = job.files
-      .map(f => f.processingResults?.[0]?.processingDuration)
+      .map(f => f.processingResults?.processingDuration)
       .filter((time): time is number => typeof time === 'number');
     
     const avgProcessingTime = processingTimes.length > 0
       ? processingTimes.reduce((sum, time) => sum + time, 0) / processingTimes.length
       : null;
 
-    return NextResponse.json({
+    // Convert BigInt values to strings for JSON serialization
+    const serializedJob = {
       ...job,
+      files: job.files.map(file => ({
+        ...file,
+        fileSize: file.fileSize.toString(), // Convert BigInt to string
+      })),
       stats,
       avgProcessingTime,
-    });
+    };
+
+    return NextResponse.json(serializedJob);
 
   } catch (error) {
     console.error('Get job error:', error);

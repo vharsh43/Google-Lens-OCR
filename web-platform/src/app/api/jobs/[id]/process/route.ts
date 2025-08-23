@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { queueManager } from '@/lib/queue';
+import { enhancedQueueManager } from '@/lib/queue-enhanced';
 import { JobStatus } from '@prisma/client';
 
 export async function POST(
@@ -66,7 +66,7 @@ export async function POST(
     });
 
     // Add job to processing queue
-    const queueJob = await queueManager.addJob({
+    const queueJob = await enhancedQueueManager.addJob({
       jobId: job.id,
       files: job.files.map(file => ({
         id: file.id,
@@ -149,7 +149,7 @@ export async function DELETE(
     }
 
     // Try to cancel in queue
-    const cancelled = await queueManager.cancelJob(jobId);
+    const cancelled = await enhancedQueueManager.cancelJob(jobId);
 
     if (cancelled) {
       // Log cancellation
@@ -178,7 +178,7 @@ export async function DELETE(
 
 async function getEstimatedWaitTime(): Promise<string> {
   try {
-    const queueStats = await queueManager.getQueueStats();
+    const queueStats = await enhancedQueueManager.getDetailedQueueStats();
     
     // Simple estimation: assume 2 minutes per job in queue
     const estimatedMinutes = queueStats.waiting * 2;

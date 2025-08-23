@@ -1,4 +1,4 @@
-// File: /Users/vharsh43/Developer/Active/Google-Lens-OCR/web-platform/src/app/api/health/route.ts
+// File: /app/src/app/api/health/route.ts
 import * as entry from '../../../../../src/app/api/health/route.js'
 import type { NextRequest } from 'next/server.js'
 

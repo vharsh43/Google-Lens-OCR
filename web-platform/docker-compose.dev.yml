@@ -1,9 +1,19 @@
 version: '3.8'
 
+networks:
+  ocr-dev-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads_data:
+  logs_data:
+
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: ocr-postgres
+    container_name: ocr-postgres-dev
     environment:
       POSTGRES_DB: ocr_platform
       POSTGRES_USER: ocr_user
@@ -13,30 +23,128 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - ocr-dev-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ocr_user -d ocr_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: ocr-redis
+    container_name: ocr-redis-dev
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    networks:
+      - ocr-dev-network
     restart: unless-stopped
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Web Application (Development)
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: ocr-web-dev
+    ports:
+      - "3000:3000"
+    environment:
+      # Database
+      DATABASE_URL: postgresql://ocr_user:dev_password@postgres:5432/ocr_platform
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      
+      # File Configuration
+      UPLOAD_DIR: /app/uploads
+      OCR_LOGS_DIR: /app/logs
+      
+      # Worker Configuration
+      WORKER_CONCURRENCY: 2
+      
+      # Application
+      NODE_ENV: development
+      
+      # Security
+      ENCRYPTION_SECRET: dev-encryption-secret
+    volumes:
+      - .:/app
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
+      - /app/node_modules
+    networks:
+      - ocr-dev-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run dev
+
+  # Queue Worker (Development)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: ocr-worker-dev
+    environment:
+      # Database
+      DATABASE_URL: postgresql://ocr_user:dev_password@postgres:5432/ocr_platform
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      
+      # File Configuration
+      UPLOAD_DIR: /app/uploads
+      OCR_LOGS_DIR: /app/logs
+      PDF_SCRIPT_PATH: ../PDF_2_PNG.py
+      OCR_SCRIPT_PATH: ../src/batch-process.js
+      
+      # Python Configuration
+      PYTHON_PATH: /usr/bin/python3
+      
+      # Worker Configuration
+      WORKER_CONCURRENCY: 2
+      
+      # Application
+      NODE_ENV: development
+    volumes:
+      - .:/app
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
+      - /app/node_modules
+    networks:
+      - ocr-dev-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run queue:dev
 
   # Optional: Redis Commander for queue monitoring
   redis-commander:
     image: rediscommander/redis-commander:latest
-    container_name: ocr-redis-commander
+    container_name: ocr-redis-commander-dev
     environment:
       REDIS_HOSTS: local:redis:6379
     ports:
       - "8081:8081"
+    networks:
+      - ocr-dev-network
     depends_on:
       - redis
     restart: unless-stopped
-
-volumes:
-  postgres_data:
-  redis_data:

@@ -1,0 +1,254 @@
+name: google-lens-ocr-platform
+
+networks:
+  ocr-network:
+    driver: bridge
+    name: ocr-network
+
+volumes:
+  postgres_data:
+    name: ocr_postgres_data
+  redis_data:
+    name: ocr_redis_data
+  uploads_data:
+    name: ocr_uploads_data
+  logs_data:
+    name: ocr_logs_data
+  processed_data:
+    name: ocr_processed_data
+  node_modules_cache:
+    name: ocr_node_modules_cache
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: ocr-postgres
+    environment:
+      POSTGRES_DB: ocr_platform
+      POSTGRES_USER: ocr_user
+      POSTGRES_PASSWORD: ocr_secure_password_2024
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./web-platform/scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
+    networks:
+      - ocr-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ocr_user -d ocr_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Redis for Job Queue
+  redis:
+    image: redis:7-alpine
+    container_name: ocr-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ocr-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # Main Web Application
+  web:
+    build:
+      context: ./web-platform
+      dockerfile: Dockerfile.dev
+      args:
+        - NODE_ENV=development
+    container_name: ocr-web
+    ports:
+      - "3333:3333"
+    environment:
+      # Database
+      DATABASE_URL: postgresql://ocr_user:ocr_secure_password_2024@postgres:5432/ocr_platform
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      
+      # File Configuration
+      UPLOAD_DIR: /app/uploads
+      OCR_LOGS_DIR: /app/logs
+      
+      # Processing Paths (relative to container)
+      PDF_SCRIPT_PATH: /app/scripts/PDF_2_PNG.py
+      OCR_SCRIPT_PATH: /app/scripts/src/batch-process.js
+      
+      # Python Configuration
+      PYTHON_PATH: /usr/bin/python3
+      
+      # Worker Configuration
+      WORKER_CONCURRENCY: 2
+      
+      # Application
+      NODE_ENV: development
+      NEXT_TELEMETRY_DISABLED: 1
+      PORT: 3333
+      HOSTNAME: "0.0.0.0"
+      
+      # Security
+      ENCRYPTION_SECRET: dev-encryption-secret-2024-secure-key
+    volumes:
+      - ./web-platform:/app
+      - ./src:/app/scripts/src:ro
+      - ./PDF_2_PNG.py:/app/scripts/PDF_2_PNG.py:ro
+      - ./logs:/app/parent-logs:ro
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
+      - processed_data:/app/processed
+      - node_modules_cache:/app/node_modules
+    networks:
+      - ocr-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'Starting OCR Web Platform...' &&
+        npm run db:generate &&
+        npm run db:push &&
+        npm run dev:web-only
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3333/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Background Queue Worker
+  worker:
+    build:
+      context: ./web-platform
+      dockerfile: Dockerfile.dev
+      args:
+        - NODE_ENV=development
+    container_name: ocr-worker
+    environment:
+      # Database
+      DATABASE_URL: postgresql://ocr_user:ocr_secure_password_2024@postgres:5432/ocr_platform
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      
+      # File Configuration
+      UPLOAD_DIR: /app/uploads
+      OCR_LOGS_DIR: /app/logs
+      
+      # Processing Paths (relative to container)
+      PDF_SCRIPT_PATH: /app/scripts/PDF_2_PNG.py
+      OCR_SCRIPT_PATH: /app/scripts/src/batch-process.js
+      
+      # Python Configuration
+      PYTHON_PATH: /usr/bin/python3
+      
+      # Worker Configuration
+      WORKER_CONCURRENCY: 2
+      
+      # Application
+      NODE_ENV: development
+    volumes:
+      - ./web-platform:/app
+      - ./src:/app/scripts/src:ro
+      - ./PDF_2_PNG.py:/app/scripts/PDF_2_PNG.py:ro
+      - ./logs:/app/parent-logs:ro
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
+      - processed_data:/app/processed
+      - node_modules_cache:/app/node_modules
+    networks:
+      - ocr-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'Starting OCR Queue Worker...' &&
+        npm run queue:dev
+      "
+
+  # Redis Commander for Queue Monitoring (Optional)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: ocr-redis-commander
+    environment:
+      REDIS_HOSTS: local:redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      HTTP_USER: admin
+      HTTP_PASSWORD: admin123
+    ports:
+      - "8081:8081"
+    networks:
+      - ocr-network
+    depends_on:
+      - redis
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # PostgreSQL Admin Interface (Optional)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: ocr-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@ocr-platform.local
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "8080:80"
+    volumes:
+      - ./web-platform/scripts/pgadmin_servers.json:/pgadmin4/servers.json:ro
+    networks:
+      - ocr-network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+# Health check script for the entire stack
+  healthcheck:
+    image: curlimages/curl:latest
+    container_name: ocr-healthcheck
+    command: >
+      sh -c "
+        echo 'Waiting for services to be healthy...' &&
+        sleep 30 &&
+        echo 'Checking web application...' &&
+        curl -f http://web:3333/api/health &&
+        echo 'All services are healthy!'
+      "
+    networks:
+      - ocr-network
+    depends_on:
+      - web
+      - worker
+    profiles:
+      - healthcheck

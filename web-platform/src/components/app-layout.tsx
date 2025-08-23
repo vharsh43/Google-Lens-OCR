@@ -10,9 +10,17 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Navigation */}
       <Navigation />
-      <main className="py-6">
-        {children}
+      
+      {/* Main content area */}
+      <main className="relative">
+        {/* Full-width content container */}
+        <div className="w-full">
+          <div className="bg-white min-h-[calc(100vh-140px)]">
+            {children}
+          </div>
+        </div>
       </main>
     </div>
   )

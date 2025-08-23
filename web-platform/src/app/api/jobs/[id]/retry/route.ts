@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { queueManager } from '@/lib/queue';
+import { enhancedQueueManager } from '@/lib/queue-enhanced';
 import { JobStatus } from '@prisma/client';
 
 export async function POST(
@@ -29,11 +29,26 @@ export async function POST(
     }
 
     // Check if job is in a valid state to retry
-    if (job.status !== JobStatus.FAILED && job.status !== JobStatus.CANCELLED) {
+    // Allow retrying jobs that are FAILED, CANCELLED, or COMPLETED with failures
+    const canRetryFromAPI = (
+      job.status === JobStatus.FAILED ||
+      job.status === JobStatus.CANCELLED ||
+      (job.status === JobStatus.COMPLETED && job.failedFiles > 0)
+    );
+    
+    console.log(`Retry attempt for job ${jobId}:`, {
+      status: job.status,
+      successfulFiles: job.successfulFiles,
+      failedFiles: job.failedFiles,
+      totalFiles: job.totalFiles,
+      canRetryFromAPI
+    });
+    
+    if (!canRetryFromAPI) {
       return NextResponse.json(
         { 
           error: 'Job cannot be retried',
-          details: `Job is in ${job.status} state. Only FAILED or CANCELLED jobs can be retried.`
+          details: `Job is in ${job.status} state with ${job.successfulFiles} successful files and ${job.failedFiles} failed files. Only FAILED, CANCELLED, or COMPLETED jobs with failures can be retried.`
         },
         { status: 400 }
       );
@@ -47,7 +62,7 @@ export async function POST(
     }
 
     // Use the enhanced queue manager retry functionality
-    const queueJob = await queueManager.retryJob(jobId);
+    const queueJob = await enhancedQueueManager.retryJob(jobId);
 
     // Update job status to queued
     await prisma.job.update({
@@ -84,7 +99,7 @@ export async function POST(
 
 async function getEstimatedWaitTime(): Promise<string> {
   try {
-    const queueStats = await queueManager.getQueueStats();
+    const queueStats = await enhancedQueueManager.getDetailedQueueStats();
     
     // Simple estimation: assume 2 minutes per job in queue
     const estimatedMinutes = queueStats.waiting * 2;

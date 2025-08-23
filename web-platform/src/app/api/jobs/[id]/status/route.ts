@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { queueManager } from '@/lib/queue';
+import { enhancedQueueManager } from '@/lib/queue-enhanced';
 
 export async function GET(
   request: NextRequest,
@@ -35,7 +35,7 @@ export async function GET(
     let queueStatus = null;
     if (job.status === 'QUEUED' || job.status === 'PROCESSING') {
       try {
-        const queueJob = await queueManager.getJobStatus(jobId);
+        const queueJob = await enhancedQueueManager.getJobStatus(jobId);
         if (queueJob) {
           queueStatus = {
             id: queueJob.id,
@@ -93,13 +93,13 @@ export async function GET(
         createdAt: file.createdAt,
         
         // Processing results
-        result: file.processingResults?.[0] ? {
-          pngCount: file.processingResults[0].pngCount,
-          pageCount: file.processingResults[0].pageCount,
-          ocrConfidence: file.processingResults[0].ocrConfidence,
-          detectedLanguages: file.processingResults[0].detectedLanguages,
-          processingDuration: file.processingResults[0].processingDuration,
-          errorDetails: file.processingResults[0].errorDetails,
+        result: file.processingResults ? {
+          pngCount: file.processingResults.pngCount,
+          pageCount: file.processingResults.pageCount,
+          ocrConfidence: file.processingResults.ocrConfidence,
+          detectedLanguages: file.processingResults.detectedLanguages,
+          processingDuration: file.processingResults.processingDuration,
+          errorDetails: file.processingResults.errorDetails,
         } : null,
       })),
     });
@@ -147,7 +147,7 @@ function calculateJobStats(job: any) {
 
   // Calculate processing statistics
   const resultsWithTimes = files
-    .map((f: any) => f.processingResults?.[0])
+    .map((f: any) => f.processingResults)
     .filter(Boolean);
 
   if (resultsWithTimes.length > 0) {

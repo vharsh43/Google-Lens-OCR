@@ -1,15 +1,39 @@
 import { Queue, Worker, Job, QueueEvents } from 'bullmq';
 import { prisma } from './prisma';
 import { ocrProcessor } from './ocr-integration';
-import { JobStatus, FileStatus } from '@prisma/client';
+import { OCRJobLockManager } from './process-lock';
+import { JobStatus, FileStatus, StageType, StageStatus, LogLevel } from '@prisma/client';
 import { join } from 'path';
+
+// WebSocket event emitters for real-time updates
+let webSocketEmitters: any = null;
+
+// Connect to WebSocket emitters
+const connectWebSocketEmitters = async () => {
+  try {
+    const ws = await import('./websocket-server');
+    webSocketEmitters = {
+      emitJobProgress: ws.emitJobProgress,
+      emitJobCompleted: ws.emitJobCompleted,
+      emitJobFailed: ws.emitJobFailed,
+      emitLogMessage: ws.emitLogMessage,
+      emitStageUpdate: ws.emitStageUpdate
+    };
+  } catch (error) {
+    // WebSocket server may not be available in some environments
+    webSocketEmitters = null;
+  }
+};
+
+// Initialize WebSocket connection
+connectWebSocketEmitters();
 
 // Redis connection configuration
 const redisConfig = {
   host: process.env.REDIS_HOST || 'localhost',
   port: parseInt(process.env.REDIS_PORT || '6379'),
   password: process.env.REDIS_PASSWORD || undefined,
-  maxRetriesPerRequest: 3,
+  maxRetriesPerRequest: null,
   retryDelayOnFailover: 100,
   enableReadyCheck: false,
 };
@@ -40,6 +64,75 @@ interface OCRJobData {
   configuration: Record<string, any>;
 }
 
+// Helper functions for stage and log management
+async function createJobStage(jobId: string, stage: StageType, totalSteps: number = 100) {
+  const stageRecord = await prisma.jobStage.create({
+    data: {
+      jobId,
+      stage,
+      status: StageStatus.PENDING,
+      totalSteps,
+      currentStep: 0,
+      progress: 0
+    }
+  });
+
+  // Emit WebSocket event
+  if (webSocketEmitters) {
+    webSocketEmitters.emitStageUpdate(jobId, stage, 'PENDING', 0);
+  }
+
+  return stageRecord;
+}
+
+async function updateJobStage(jobId: string, stage: StageType, status: StageStatus, progress: number = 0, currentStep: number = 0) {
+  await prisma.jobStage.updateMany({
+    where: { jobId, stage },
+    data: {
+      status,
+      progress,
+      currentStep,
+      ...(status === StageStatus.RUNNING && !currentStep ? { startedAt: new Date() } : {}),
+      ...(status === StageStatus.COMPLETED || status === StageStatus.FAILED ? { completedAt: new Date() } : {})
+    }
+  });
+
+  // Emit WebSocket event
+  if (webSocketEmitters) {
+    webSocketEmitters.emitStageUpdate(jobId, stage, status, progress);
+  }
+}
+
+async function logJobMessage(jobId: string, level: LogLevel, message: string, stage?: StageType, metadata?: any) {
+  await prisma.processingLog.create({
+    data: {
+      jobId,
+      level,
+      stage,
+      message,
+      metadata: metadata ? JSON.parse(JSON.stringify(metadata)) : null,
+      timestamp: new Date()
+    }
+  });
+
+  // Emit WebSocket event
+  if (webSocketEmitters) {
+    webSocketEmitters.emitLogMessage(jobId, level.toLowerCase(), message, new Date());
+  }
+}
+
+async function updateJobProgress(jobId: string, progress: number, stage: string, message?: string) {
+  await prisma.job.update({
+    where: { id: jobId },
+    data: { progress }
+  });
+
+  // Emit WebSocket event
+  if (webSocketEmitters) {
+    webSocketEmitters.emitJobProgress(jobId, progress, stage, message);
+  }
+}
+
 // Create OCR Worker factory function
 function createOCRWorker(): Worker<OCRJobData> {
   return new Worker<OCRJobData>(
@@ -47,108 +140,200 @@ function createOCRWorker(): Worker<OCRJobData> {
     async (job: Job<OCRJobData>) => {
       const { jobId, files, configuration } = job.data;
     
-    console.log(`🚀 Starting OCR job ${jobId} with ${files.length} files`);
+      console.log(`🚀 Starting OCR job ${jobId} with ${files.length} files`);
 
-    try {
-      // Update job status to processing
-      await prisma.job.update({
-        where: { id: jobId },
-        data: { 
-          status: JobStatus.PROCESSING, 
-          startedAt: new Date() 
+      // Acquire job lock to prevent concurrent processing
+      const lockAcquired = await OCRJobLockManager.acquireJobLock(jobId);
+      if (!lockAcquired) {
+        const lockInfo = await OCRJobLockManager.getJobLockInfo(jobId);
+        const errorMsg = `Job ${jobId} is already being processed by another worker (PID: ${lockInfo?.pid})`;
+        console.error(`❌ ${errorMsg}`);
+        throw new Error(errorMsg);
+      }
+
+      console.log(`🔒 Acquired processing lock for job ${jobId}`);
+
+      try {
+        // Stage 1: Initialization
+        await createJobStage(jobId, StageType.INITIALIZATION);
+        await updateJobStage(jobId, StageType.INITIALIZATION, StageStatus.RUNNING);
+        await logJobMessage(jobId, LogLevel.INFO, `Starting OCR job with ${files.length} files`, StageType.INITIALIZATION);
+
+        // Update job status to processing
+        await prisma.job.update({
+          where: { id: jobId },
+          data: { 
+            status: JobStatus.PROCESSING, 
+            startedAt: new Date() 
+          }
+        });
+
+        await updateJobProgress(jobId, 5, 'INITIALIZATION', 'Job initialized and ready to start');
+        await updateJobStage(jobId, StageType.INITIALIZATION, StageStatus.COMPLETED, 100);
+
+        // Stage 2: File Validation
+        await createJobStage(jobId, StageType.FILE_VALIDATION);
+        await updateJobStage(jobId, StageType.FILE_VALIDATION, StageStatus.RUNNING);
+        await logJobMessage(jobId, LogLevel.INFO, `Validating ${files.length} files`, StageType.FILE_VALIDATION);
+        
+        // Validate all files
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          await logJobMessage(jobId, LogLevel.DEBUG, `Validating file: ${file.originalName}`, StageType.FILE_VALIDATION);
+          const validationProgress = Math.round(((i + 1) / files.length) * 100);
+          await updateJobStage(jobId, StageType.FILE_VALIDATION, StageStatus.RUNNING, validationProgress);
         }
-      });
+        
+        await updateJobProgress(jobId, 10, 'FILE_VALIDATION', 'All files validated successfully');
+        await updateJobStage(jobId, StageType.FILE_VALIDATION, StageStatus.COMPLETED, 100);
 
-      let processedCount = 0;
-      let successfulCount = 0;
-      let failedCount = 0;
-      const totalFiles = files.length;
+        let processedCount = 0;
+        let successfulCount = 0;
+        let failedCount = 0;
+        const totalFiles = files.length;
 
-      // Process each file
-      for (const file of files) {
-        try {
-          console.log(`📄 Processing file: ${file.originalName} (${processedCount + 1}/${totalFiles})`);
+        // Stage 3: PDF Conversion and OCR Processing
+        await createJobStage(jobId, StageType.PDF_CONVERSION);
+        await createJobStage(jobId, StageType.OCR_PROCESSING);
+        await createJobStage(jobId, StageType.TEXT_EXTRACTION);
+        
+        // Process each file with detailed progress tracking
+        for (const file of files) {
+          try {
+            console.log(`📄 Processing file: ${file.originalName} (${processedCount + 1}/${totalFiles})`);
+            await logJobMessage(jobId, LogLevel.INFO, `Processing file: ${file.originalName} (${processedCount + 1}/${totalFiles})`, StageType.OCR_PROCESSING);
 
-          // Update file status
-          await prisma.file.update({
-            where: { id: file.id },
-            data: { 
-              status: FileStatus.PROCESSING,
-              processingStartedAt: new Date()
-            }
-          });
-
-          // Update job progress
-          const progressPercent = Math.round((processedCount / totalFiles) * 100);
-          await job.updateProgress(progressPercent);
-          
-          await prisma.job.update({
-            where: { id: jobId },
-            data: { 
-              progress: progressPercent,
-              processedFiles: processedCount
-            }
-          });
-
-          // Create output directory for this file
-          const outputDir = join(process.env.UPLOAD_DIR || './uploads', jobId, 'processed', file.id);
-
-          // Process the file using the integrated OCR processor
-          const result = await ocrProcessor.processFile(
-            file.filePath,
-            outputDir,
-            {
-              dpi: configuration.dpi || 300,
-              retryAttempts: configuration.retryAttempts || 3,
-              timeout: configuration.timeout || 45000,
-            }
-          );
-
-          if (result.success) {
-            console.log(`✅ Successfully processed ${file.originalName}`);
-
-            // Update file as completed
+            // Update file status
             await prisma.file.update({
               where: { id: file.id },
               data: { 
-                status: FileStatus.COMPLETED,
-                processingCompletedAt: new Date()
+                status: FileStatus.PROCESSING,
+                processingStartedAt: new Date()
               }
             });
 
-            // Save processing results
-            await prisma.processingResult.create({
-              data: {
-                fileId: file.id,
-                outputPath: result.outputPath || '',
-                pngOutputPath: result.pngOutputPath || '',
-                textOutputPath: result.textOutputPath || '',
-                pngCount: result.pngCount || 0,
-                pageCount: result.pageCount || 0,
-                ocrConfidence: result.ocrConfidence || 0,
-                detectedLanguages: result.detectedLanguages || [],
-                processingDuration: result.processingDuration || 0,
-                metadata: result.metadata || {}
+            // Start PDF conversion for this file
+            await updateJobStage(jobId, StageType.PDF_CONVERSION, StageStatus.RUNNING, Math.round((processedCount / totalFiles) * 100));
+            await logJobMessage(jobId, LogLevel.INFO, `Converting ${file.originalName} to PNG format`, StageType.PDF_CONVERSION);
+
+            // Update overall job progress
+            const baseProgress = 15 + Math.round((processedCount / totalFiles) * 70); // 15-85% range for processing
+            await updateJobProgress(jobId, baseProgress, 'PROCESSING', `Processing ${file.originalName}`);
+            await job.updateProgress(baseProgress);
+
+            // Create output directory structure that matches download expectations
+            const baseOutputDir = join(process.env.UPLOAD_DIR || './uploads', '..', 'processed', jobId);
+            const outputDir = join(baseOutputDir, file.id);
+
+            // Update OCR processing stage
+            await updateJobStage(jobId, StageType.OCR_PROCESSING, StageStatus.RUNNING, Math.round((processedCount / totalFiles) * 100));
+            await logJobMessage(jobId, LogLevel.INFO, `Starting OCR processing for ${file.originalName}`, StageType.OCR_PROCESSING);
+
+            // Process the file using the integrated OCR processor
+            const result = await ocrProcessor.processFile(
+              file.filePath,
+              outputDir,
+              {
+                dpi: configuration.dpi || 300,
+                retryAttempts: configuration.retryAttempts || 3,
+                timeout: configuration.timeout || 45000,
               }
-            });
+            );
 
-            successfulCount++;
-
-            // Send progress update notification (could be WebSocket, email, etc.)
-            await notifyProgress(jobId, {
-              type: 'file_completed',
-              fileName: file.originalName,
-              progress: Math.round(((processedCount + 1) / totalFiles) * 100),
-              result: {
+            if (result.success) {
+              console.log(`✅ Successfully processed ${file.originalName}`);
+              await logJobMessage(jobId, LogLevel.INFO, `Successfully processed ${file.originalName}: ${result.pngCount} pages, ${result.ocrConfidence}% confidence`, StageType.OCR_PROCESSING, {
+                fileName: file.originalName,
                 pngCount: result.pngCount,
                 pageCount: result.pageCount,
                 confidence: result.ocrConfidence,
-                languages: result.detectedLanguages
-              }
-            });
+                languages: result.detectedLanguages,
+                duration: result.processingDuration
+              });
 
-          } else {
-            console.error(`❌ Failed to process ${file.originalName}: ${result.error}`);
+              // Update text extraction stage
+              await updateJobStage(jobId, StageType.TEXT_EXTRACTION, StageStatus.RUNNING, Math.round((processedCount / totalFiles) * 100));
+              await logJobMessage(jobId, LogLevel.INFO, `Extracting and organizing text from ${file.originalName}`, StageType.TEXT_EXTRACTION);
+
+              // Update file as completed
+              await prisma.file.update({
+                where: { id: file.id },
+                data: { 
+                  status: FileStatus.COMPLETED,
+                  processingCompletedAt: new Date()
+                }
+              });
+
+              // Save processing results with page error tracking
+              await prisma.processingResult.create({
+                data: {
+                  fileId: file.id,
+                  outputPath: result.outputPath || '',
+                  pngOutputPath: result.pngOutputPath || '',
+                  textOutputPath: result.textOutputPath || '',
+                  pngCount: result.pngCount || 0,
+                  pageCount: result.pageCount || 0,
+                  failedPngPages: result.failedPngPages || [],
+                  failedOcrPages: result.failedOcrPages || [],
+                  successfulPages: result.successfulPages || result.pngCount || 0,
+                  totalPagesInPdf: result.totalPagesInPdf || result.pageCount || 0,
+                  pageErrors: result.pageErrors || {},
+                  ocrConfidence: result.ocrConfidence || 0,
+                  detectedLanguages: result.detectedLanguages || [],
+                  processingDuration: result.processingDuration || 0,
+                  metadata: result.metadata || {}
+                }
+              });
+
+              successfulCount++;
+              await logJobMessage(jobId, LogLevel.INFO, `File completed: ${file.originalName} (${successfulCount}/${totalFiles} successful)`, StageType.TEXT_EXTRACTION);
+
+            } else {
+              console.error(`❌ Failed to process ${file.originalName}: ${result.error}`);
+              await logJobMessage(jobId, LogLevel.ERROR, `Failed to process ${file.originalName}: ${result.error}`, StageType.OCR_PROCESSING, {
+                fileName: file.originalName,
+                error: result.error,
+                duration: result.processingDuration
+              });
+
+              // Mark file as failed
+              await prisma.file.update({
+                where: { id: file.id },
+                data: { 
+                  status: FileStatus.FAILED,
+                  processingCompletedAt: new Date()
+                }
+              });
+
+              // Save error details
+              await prisma.processingResult.create({
+                data: {
+                  fileId: file.id,
+                  errorDetails: result.error || 'Unknown error',
+                  processingDuration: result.processingDuration || 0,
+                  metadata: { 
+                    error: true, 
+                    originalError: result.error,
+                    ...result.metadata 
+                  }
+                }
+              });
+
+              failedCount++;
+            }
+
+            processedCount++;
+
+          } catch (fileError) {
+            console.error(`💥 Error processing file ${file.id}:`, fileError);
+            await logJobMessage(jobId, LogLevel.CRITICAL, `Critical error processing file ${file.originalName}: ${fileError instanceof Error ? fileError.message : String(fileError)}`, StageType.OCR_PROCESSING, {
+              fileName: file.originalName,
+              error: fileError instanceof Error ? fileError.message : String(fileError),
+              errorType: 'processing_exception'
+            });
+            
+            failedCount++;
+            processedCount++;
 
             // Mark file as failed
             await prisma.file.update({
@@ -163,91 +348,81 @@ function createOCRWorker(): Worker<OCRJobData> {
             await prisma.processingResult.create({
               data: {
                 fileId: file.id,
-                errorDetails: result.error || 'Unknown error',
-                processingDuration: result.processingDuration || 0,
+                errorDetails: fileError instanceof Error ? fileError.message : String(fileError),
                 metadata: { 
-                  error: true, 
-                  originalError: result.error,
-                  ...result.metadata 
+                  error: true,
+                  errorType: 'processing_exception',
+                  timestamp: new Date().toISOString()
                 }
               }
             });
-
-            failedCount++;
-
-            // Send error notification
-            await notifyProgress(jobId, {
-              type: 'file_failed',
-              fileName: file.originalName,
-              error: result.error,
-              progress: Math.round(((processedCount + 1) / totalFiles) * 100)
-            });
           }
-
-          processedCount++;
-
-        } catch (fileError) {
-          console.error(`💥 Error processing file ${file.id}:`, fileError);
-          failedCount++;
-          processedCount++;
-
-          // Mark file as failed
-          await prisma.file.update({
-            where: { id: file.id },
-            data: { 
-              status: FileStatus.FAILED,
-              processingCompletedAt: new Date()
-            }
-          });
-
-          // Save error details
-          await prisma.processingResult.create({
-            data: {
-              fileId: file.id,
-              errorDetails: fileError instanceof Error ? fileError.message : String(fileError),
-              metadata: { 
-                error: true,
-                errorType: 'processing_exception',
-                timestamp: new Date().toISOString()
-              }
-            }
-          });
-        }
 
         // Brief pause between files to prevent overwhelming the system
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      // Calculate final statistics
-      const successRate = totalFiles > 0 ? (successfulCount / totalFiles) * 100 : 0;
-      const finalStatus = failedCount === 0 ? JobStatus.COMPLETED : 
-                         successfulCount > 0 ? JobStatus.COMPLETED : JobStatus.FAILED;
+        // Complete all processing stages
+        await updateJobStage(jobId, StageType.PDF_CONVERSION, StageStatus.COMPLETED, 100);
+        await updateJobStage(jobId, StageType.OCR_PROCESSING, StageStatus.COMPLETED, 100);
+        await updateJobStage(jobId, StageType.TEXT_EXTRACTION, StageStatus.COMPLETED, 100);
 
-      // Update final job status
-      await prisma.job.update({
-        where: { id: jobId },
-        data: { 
-          status: finalStatus,
-          progress: 100,
-          processedFiles: processedCount,
+        // Stage 4: File Organization
+        await createJobStage(jobId, StageType.FILE_ORGANIZATION);
+        await updateJobStage(jobId, StageType.FILE_ORGANIZATION, StageStatus.RUNNING);
+        await logJobMessage(jobId, LogLevel.INFO, 'Organizing output files and creating final structure', StageType.FILE_ORGANIZATION);
+        await updateJobProgress(jobId, 90, 'FILE_ORGANIZATION', 'Organizing output files');
+        await updateJobStage(jobId, StageType.FILE_ORGANIZATION, StageStatus.COMPLETED, 100);
+
+        // Stage 5: Finalization
+        await createJobStage(jobId, StageType.FINALIZATION);
+        await updateJobStage(jobId, StageType.FINALIZATION, StageStatus.RUNNING);
+        
+        // Calculate final statistics
+        const successRate = totalFiles > 0 ? (successfulCount / totalFiles) * 100 : 0;
+        const finalStatus = failedCount === 0 ? JobStatus.COMPLETED : 
+                           successfulCount > 0 ? JobStatus.COMPLETED : JobStatus.FAILED;
+
+        await logJobMessage(jobId, LogLevel.INFO, `Job completion: ${successfulCount}/${totalFiles} files successful (${successRate.toFixed(1)}% success rate)`, StageType.FINALIZATION, {
+          totalFiles,
           successfulFiles: successfulCount,
           failedFiles: failedCount,
-          completedAt: new Date()
+          successRate: successRate.toFixed(1)
+        });
+
+        // Update final job status
+        await prisma.job.update({
+          where: { id: jobId },
+          data: { 
+            status: finalStatus,
+            progress: 100,
+            processedFiles: processedCount,
+            successfulFiles: successfulCount,
+            failedFiles: failedCount,
+            completedAt: new Date()
+          }
+        });
+
+        await updateJobProgress(jobId, 100, finalStatus === JobStatus.COMPLETED ? 'COMPLETED' : 'FAILED', 
+          finalStatus === JobStatus.COMPLETED ? 'Job completed successfully' : 'Job completed with some failures');
+        await updateJobStage(jobId, StageType.FINALIZATION, StageStatus.COMPLETED, 100);
+
+        // Log completion
+        console.log(`🎉 OCR job ${jobId} completed: ${successfulCount}/${totalFiles} successful (${successRate.toFixed(1)}% success rate)`);
+
+        // Emit final WebSocket events
+        if (webSocketEmitters) {
+          if (finalStatus === JobStatus.COMPLETED) {
+            webSocketEmitters.emitJobCompleted(jobId, {
+              totalFiles,
+              successfulFiles: successfulCount,
+              failedFiles: failedCount,
+              successRate
+            });
+          } else {
+            webSocketEmitters.emitJobFailed(jobId, `Job completed with ${failedCount} failed files out of ${totalFiles} total`);
+          }
         }
-      });
-
-      // Log completion
-      console.log(`🎉 OCR job ${jobId} completed: ${successfulCount}/${totalFiles} successful (${successRate.toFixed(1)}% success rate)`);
-
-      // Send final notification
-      await notifyProgress(jobId, {
-        type: 'job_completed',
-        status: finalStatus,
-        totalFiles,
-        successfulFiles: successfulCount,
-        failedFiles: failedCount,
-        successRate
-      });
 
       // Log completion
       console.log(`Job ${jobId} completed: ${successfulCount}/${totalFiles} files successful`);
@@ -287,6 +462,10 @@ function createOCRWorker(): Worker<OCRJobData> {
       });
 
       throw error;
+    } finally {
+      // Always release the job lock
+      await OCRJobLockManager.releaseJobLock(jobId);
+      console.log(`🔓 Released processing lock for job ${jobId}`);
     }
   },
   {
@@ -505,8 +684,15 @@ export const enhancedQueueManager = {
       include: { files: true }
     });
 
-    if (!job || job.status !== JobStatus.FAILED) {
-      throw new Error('Job not found or not in failed state');
+    // Allow retrying jobs that are in FAILED, CANCELLED state or COMPLETED with failures
+    const canRetry = job && (
+      job.status === JobStatus.FAILED || 
+      job.status === JobStatus.CANCELLED ||
+      (job.status === JobStatus.COMPLETED && job.failedFiles > 0)
+    );
+    
+    if (!canRetry) {
+      throw new Error('Job not found or cannot be retried. Only failed jobs, cancelled jobs, or completed jobs with failures can be retried.');
     }
 
     // Reset job and file statuses

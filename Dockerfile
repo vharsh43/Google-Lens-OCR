@@ -13,19 +13,15 @@ RUN pip install --no-cache-dir --retries 5 --timeout 120 \
 # Stage 2: Dashboard Builder - Build React application
 FROM node:18-slim AS dashboard-builder
 
-# Install minimal system dependencies
-RUN apt-get update && apt-get install -y ca-certificates && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app/dashboard
 
 # Copy dashboard package files and install dependencies
 COPY dashboard/package*.json ./
 RUN npm install
 
-# Copy dashboard source and build
+# Copy dashboard source and build with npx (bypasses .bin symlink issues)
 COPY dashboard/ .
-RUN npm run build
+RUN npx vite build
 
 # Stage 3: Server Dependencies - Install server dependencies
 FROM node:18-slim AS server-deps

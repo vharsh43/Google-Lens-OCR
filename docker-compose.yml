@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  google-lens-ocr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: google-lens-ocr-pipeline
+    ports:
+      - "3003:3003"  # Server port
+      - "3333:3333"  # Dashboard port
+    volumes:
+      # Mount processing directories for data persistence
+      - ./1_New_File_Process_PDF_2_PNG:/app/1_New_File_Process_PDF_2_PNG
+      - ./2_Converted_PNGs:/app/2_Converted_PNGs
+      - ./3_OCR_TXT_Files:/app/3_OCR_TXT_Files
+      - ./logs:/app/logs
+      - ./server/uploads:/app/server/uploads
+    environment:
+      - NODE_ENV=production
+      - PORT=3003
+      - DASHBOARD_PORT=3333
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ocr-network
+
+networks:
+  ocr-network:
+    driver: bridge
+
+volumes:
+  # Define named volumes for better data management (optional)
+  pdf_files:
+    driver: local
+  png_files:
+    driver: local
+  txt_files:
+    driver: local
+  log_files:
+    driver: local

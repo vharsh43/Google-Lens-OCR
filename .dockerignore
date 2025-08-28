@@ -1,0 +1,83 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dashboard/dist/
+dashboard/build/
+
+# Development files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker files
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Documentation (keep in image for reference)
+# README.md
+# *.md
+
+# Logs (will be mounted as volumes)
+logs/*
+*.log
+
+# Temporary and cache files
+.tmp/
+.cache/
+tmp/
+temp/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Runtime data (will be mounted as volumes)
+# 1_New_File_Process_PDF_2_PNG/*
+# 2_Converted_PNGs/*
+# 3_OCR_TXT_Files/*
+
+# Test files
+test/
+tests/
+*.test.js
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Package manager files (keep package.json, exclude lock files to force fresh install)
+# package-lock.json
+# yarn.lock

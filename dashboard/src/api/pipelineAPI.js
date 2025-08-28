@@ -1,6 +1,6 @@
 import io from 'socket.io-client';
 
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = 'http://localhost:3003/api';
 
 class PipelineAPI {
   constructor() {
@@ -10,7 +10,7 @@ class PipelineAPI {
   // Connect to Socket.IO
   connect() {
     if (!this.socket) {
-      this.socket = io('http://localhost:3001');
+      this.socket = io('http://localhost:3003');
     }
     return this.socket;
   }

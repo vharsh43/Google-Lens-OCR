@@ -72,7 +72,18 @@ router.post('/clear-all', async (req, res) => {
     for (const folder of foldersToClean) {
       const folderPath = directories[folder];
       if (await fs.pathExists(folderPath)) {
-        await fs.emptyDir(folderPath);
+        // For PDF folder, remove all contents including subdirectories
+        // For other folders, just empty them
+        if (folder === 'pdf') {
+          // Remove all contents including subdirectories
+          const items = await fs.readdir(folderPath);
+          for (const item of items) {
+            const itemPath = path.join(folderPath, item);
+            await fs.remove(itemPath);
+          }
+        } else {
+          await fs.emptyDir(folderPath);
+        }
       }
     }
 

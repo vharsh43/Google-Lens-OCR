@@ -80,6 +80,23 @@ fi
 
 echo -e "${GREEN}✅ Node.js $(node --version) and npm $(npm --version) are ready${NC}"
 
+# Detect available Chromium installation
+echo -e "${BLUE}🔍 Detecting Chromium installation...${NC}"
+if command -v chromium >/dev/null 2>&1; then
+    export PUPPETEER_EXECUTABLE_PATH="/usr/bin/chromium"
+    echo -e "${GREEN}✅ Found Chromium at /usr/bin/chromium${NC}"
+elif command -v chromium-browser >/dev/null 2>&1; then
+    export PUPPETEER_EXECUTABLE_PATH="/usr/bin/chromium-browser"
+    echo -e "${GREEN}✅ Found Chromium at /usr/bin/chromium-browser${NC}"
+elif command -v google-chrome >/dev/null 2>&1; then
+    export PUPPETEER_EXECUTABLE_PATH="/usr/bin/google-chrome"
+    echo -e "${GREEN}✅ Found Chrome at /usr/bin/google-chrome${NC}"
+else
+    echo -e "${YELLOW}⚠️  No system Chromium found, Puppeteer will download its own${NC}"
+    unset PUPPETEER_EXECUTABLE_PATH
+    export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
+fi
+
 # Start the server in background
 echo -e "${BLUE}🖥️  Starting server on port 3003...${NC}"
 cd /app/server

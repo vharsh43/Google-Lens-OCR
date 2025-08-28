@@ -27,8 +27,11 @@ COPY package*.json ./
 COPY server/package*.json ./server/
 COPY dashboard/package*.json ./dashboard/
 
-# Install dependencies with extended timeout
-RUN npm config set network-timeout 300000 && \
+# Install dependencies with proper npm timeout settings
+RUN npm config set fetch-timeout 300000 && \
+    npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
     npm ci --only=production
 
 # Install server dependencies

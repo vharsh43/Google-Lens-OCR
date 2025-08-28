@@ -28,8 +28,11 @@ docker-compose up --build
 git clone https://github.com/vharsh43/Google-Lens-OCR
 cd Google-Lens-OCR
 
-# Start with Windows-optimized build
-docker-compose -f docker-compose.windows.yml up --build
+# Start with Windows-optimized build (recommended)
+docker-compose -f docker-compose.windows-minimal.yml up --build
+
+# Alternative if you encounter package errors:
+# docker-compose -f docker-compose.windows.yml up --build
 ```
 
 **That's it!** The system will:
@@ -207,12 +210,15 @@ docker-compose up --build --no-cache
 
 If you encounter network/download errors on Windows:
 ```powershell
-# Use the Windows-optimized version
+# Use the minimal Windows version (recommended)
+docker-compose -f docker-compose.windows-minimal.yml up --build
+
+# Alternative with more system packages
 docker-compose -f docker-compose.windows.yml up --build
 
 # If still having issues, try with different network settings
-docker-compose -f docker-compose.windows.yml down
-docker-compose -f docker-compose.windows.yml up --build --force-recreate
+docker-compose -f docker-compose.windows-minimal.yml down
+docker-compose -f docker-compose.windows-minimal.yml up --build --force-recreate
 ```
 
 Common Windows fixes:

@@ -11,29 +11,13 @@ Convert PDFs to text using high-quality PNG conversion (300 DPI) and Google Lens
 - **Internet connection** (for Google Lens OCR)
 
 ### One-Command Setup
-
-**For macOS/Linux:**
 ```bash
 # Clone the repository
 git clone https://github.com/vharsh43/Google-Lens-OCR
 cd Google-Lens-OCR
 
-# Start everything with Docker
+# Start everything with Docker (works on Windows, macOS, and Linux)
 docker-compose up --build
-```
-
-**For Windows:**
-```powershell
-# Clone the repository
-git clone https://github.com/vharsh43/Google-Lens-OCR
-cd Google-Lens-OCR
-
-# Start with Windows-simple build (most reliable)
-docker-compose -f docker-compose.windows-simple.yml up --build
-
-# Alternatives if needed:
-# docker-compose -f docker-compose.windows-minimal.yml up --build
-# docker-compose -f docker-compose.windows.yml up --build
 ```
 
 **That's it!** The system will:
@@ -193,7 +177,6 @@ Edit `src/config.js` to adjust:
 
 ### Docker Issues
 
-**General Docker Problems:**
 ```bash
 # Check if Docker is running
 docker --version
@@ -205,27 +188,13 @@ docker-compose logs -f
 # Restart with fresh build
 docker-compose down
 docker-compose up --build --no-cache
+
+# If still having issues, try force recreate
+docker-compose down
+docker-compose up --build --force-recreate
 ```
 
-**Windows-Specific Issues:**
-
-If you encounter network/download errors on Windows:
-```powershell
-# Use the simple Windows version (most reliable)
-docker-compose -f docker-compose.windows-simple.yml up --build
-
-# Alternative minimal version
-docker-compose -f docker-compose.windows-minimal.yml up --build
-
-# Alternative with more system packages
-docker-compose -f docker-compose.windows.yml up --build
-
-# If still having issues, try with clean rebuild
-docker-compose -f docker-compose.windows-simple.yml down
-docker-compose -f docker-compose.windows-simple.yml up --build --force-recreate
-```
-
-Common Windows fixes:
+**Windows-Specific Tips:**
 - **WSL2 Backend**: Ensure Docker Desktop is using WSL2 backend
 - **Firewall**: Temporarily disable Windows Firewall during build
 - **Antivirus**: Add Docker Desktop to antivirus exclusions

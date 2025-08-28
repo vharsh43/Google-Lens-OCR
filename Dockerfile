@@ -1,121 +1,61 @@
-# Multi-stage Docker build for Google Lens OCR Pipeline
-# Works on macOS, Windows, and Linux
+# Universal Docker build for Google Lens OCR Pipeline
+# Works on Windows, macOS, and Linux with a single Dockerfile
 
 # Stage 1: Python Builder - Install Python dependencies
 FROM python:3.11-slim AS python-builder
 
-# Install system dependencies for PyMuPDF
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    gcc \
-    g++ \
-    libffi-dev \
-    libssl-dev \
-    zlib1g-dev \
-    libjpeg-dev \
-    libfreetype6-dev \
-    liblcms2-dev \
-    libopenjp2-7-dev \
-    libtiff5-dev \
-    tk-dev \
-    tcl-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python packages
-RUN pip install --no-cache-dir \
+# Install Python packages (no system dependencies needed for most cases)
+RUN pip install --no-cache-dir --retries 5 --timeout 120 \
     PyMuPDF==1.23.26 \
     tqdm==4.66.1 \
     Pillow==10.1.0
 
-# Stage 2: Node.js Base - Install Node.js and dependencies
-FROM node:18-alpine AS node-base
+# Stage 2: Dashboard Builder - Build React application
+FROM node:18-slim AS dashboard-builder
 
-# Install system dependencies needed for Chrome and OCR
-RUN apk add --no-cache \
-    chromium \
-    nss \
-    freetype \
-    freetype-dev \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont \
-    python3 \
-    py3-pip \
-    make \
-    g++ \
-    && rm -rf /var/cache/apk/*
+# Install minimal system dependencies
+RUN apt-get update && apt-get install -y ca-certificates && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Tell Puppeteer to skip installing Chromium (use system-installed)
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+WORKDIR /app/dashboard
 
-# Set working directory
+# Copy dashboard package files and install dependencies
+COPY dashboard/package*.json ./
+RUN npm install
+
+# Copy dashboard source and build
+COPY dashboard/ .
+RUN npm run build
+
+# Stage 3: Server Dependencies - Install server dependencies
+FROM node:18-slim AS server-deps
+
 WORKDIR /app
 
-# Copy package files for root, server, and dashboard
+# Copy all package files
 COPY package*.json ./
 COPY server/package*.json ./server/
-COPY dashboard/package*.json ./dashboard/
 
-# Install root dependencies
-RUN npm ci --only=production
+# Install root and server dependencies
+RUN npm install --only=production
 
-# Install server dependencies
 WORKDIR /app/server
-RUN npm ci --only=production
-
-# Install dashboard dependencies
-WORKDIR /app/dashboard
-RUN npm ci
-
-# Stage 3: Dashboard Builder - Build React dashboard
-FROM node-base AS dashboard-builder
-
-WORKDIR /app/dashboard
-
-# Copy dashboard source code
-COPY dashboard/ .
-
-# Build the dashboard
-RUN npm run build
+RUN npm install --only=production
 
 # Stage 4: Final Runtime - Combine everything
 FROM python:3.11-slim AS runtime
 
-# Install system dependencies
+# Install essential system dependencies only
 RUN apt-get update && apt-get install -y \
     curl \
-    wget \
-    gnupg \
-    gpg \
     ca-certificates \
-    fonts-liberation \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libdrm2 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libgbm1 \
-    libxss1 \
-    libgtk-3-0 \
-    && mkdir -p /etc/apt/keyrings \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs
-
-# Install Chromium alternatives (fallback for network issues)
-RUN apt-get update && \
-    (apt-get install -y chromium chromium-driver || \
-     apt-get install -y --fix-missing chromium chromium-driver || \
-     apt-get install -y chromium-browser || \
-     echo "Warning: Chromium installation failed, will use puppeteer's bundled chromium") && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy Python packages from builder
 COPY --from=python-builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
@@ -127,13 +67,12 @@ WORKDIR /app
 # Copy application code
 COPY . .
 
-# Copy built Node.js dependencies from node-base stage
-COPY --from=node-base /app/node_modules ./node_modules
-COPY --from=node-base /app/server/node_modules ./server/node_modules
+# Copy Node.js dependencies from server-deps stage
+COPY --from=server-deps /app/node_modules ./node_modules
+COPY --from=server-deps /app/server/node_modules ./server/node_modules
 
 # Copy built dashboard from dashboard-builder stage
 COPY --from=dashboard-builder /app/dashboard/dist ./dashboard/dist
-COPY --from=dashboard-builder /app/dashboard/node_modules ./dashboard/node_modules
 
 # Create necessary directories
 RUN mkdir -p /app/1_New_File_Process_PDF_2_PNG \
@@ -142,12 +81,13 @@ RUN mkdir -p /app/1_New_File_Process_PDF_2_PNG \
     /app/logs \
     /app/server/uploads
 
-# Set Chromium executable path for puppeteer (multiple fallbacks)
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+# Configure Puppeteer to download its own Chromium (most reliable across platforms)
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
+ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
 
 # Create non-root user for security
 RUN useradd -r -s /bin/false ocruser && \
+    mkdir -p /app/.cache/puppeteer && \
     chown -R ocruser:ocruser /app
 USER ocruser
 
@@ -160,8 +100,8 @@ USER root
 RUN chmod +x /docker-entrypoint.sh
 USER ocruser
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+# Health check with extended timeout for Puppeteer setup
+HEALTHCHECK --interval=60s --timeout=30s --start-period=120s --retries=3 \
     CMD curl -f http://localhost:3003/api/health || exit 1
 
 # Start the application

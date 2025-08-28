@@ -35,7 +35,8 @@ RUN npm ci
 
 # Copy source and build
 COPY dashboard/ .
-RUN npm run build
+# Use npx to avoid binary symlink issues on Windows
+RUN npx vite build
 
 # Stage 4: Final runtime
 FROM python:3.11-slim AS runtime

@@ -81,20 +81,17 @@ RUN mkdir -p /app/1_New_File_Process_PDF_2_PNG \
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
 ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
 
+# Copy and set up entrypoint script first (as root)
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 # Create non-root user for security
 RUN useradd -r -s /bin/false ocruser && \
     mkdir -p /app/.cache/puppeteer && \
     chown -R ocruser:ocruser /app
-USER ocruser
 
 # Expose ports
 EXPOSE 3003 3333
-
-# Copy entrypoint script
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-USER root
-RUN chmod +x /docker-entrypoint.sh
-USER ocruser
 
 # Health check with extended timeout for Puppeteer setup
 HEALTHCHECK --interval=60s --timeout=30s --start-period=120s --retries=3 \

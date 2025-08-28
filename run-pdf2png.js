@@ -5,7 +5,9 @@ import fs from 'fs';
 
 // Detect the correct Python command
 async function detectPythonCommand() {
-  const pythonCommands = ['python3', 'python'];
+  const pythonCommands = process.platform === 'win32' 
+    ? ['py', 'python', 'python3']
+    : ['python3', 'python'];
   
   for (const cmd of pythonCommands) {
     try {

@@ -567,70 +567,47 @@ class BatchProcessor {
         }
       }
 
-      // Report existing files
-      if (existingFiles.length > 0) {
-        reportLines.push('SUCCESSFULLY CONVERTED FILES:');
-        reportLines.push('-'.repeat(40));
-        existingFiles.forEach((file, index) => {
-          reportLines.push(`${(index + 1).toString().padStart(4)}. ${file.relativePath}`);
-          reportLines.push(`      → ${file.output} (${this.formatFileSize(file.size)})`);
-        });
-        reportLines.push('');
-      }
-
-      // Report missing files
-      if (missingFiles.length > 0) {
-        reportLines.push('MISSING/FAILED CONVERSIONS:');
-        reportLines.push('-'.repeat(40));
-        missingFiles.forEach((file, index) => {
-          reportLines.push(`${(index + 1).toString().padStart(4)}. ${file.relativePath}`);
-          reportLines.push(`      Expected: ${file.expectedOutput}`);
-          
-          // Check if this file was in processing results
-          const processResult = processedResults.find(r => 
-            this.path.basename(r.inputPath) === file.input
-          );
-          
-          if (processResult && !processResult.success) {
-            reportLines.push(`      Error: ${processResult.error}`);
-          } else if (!processResult) {
-            reportLines.push(`      Status: Not processed (possibly skipped)`);
-          } else {
-            reportLines.push(`      Status: Unknown failure`);
-          }
-        });
-        reportLines.push('');
-      }
-
-      // Failed processing details
+      // Count-based file comparison (simplified)
+      reportLines.push('FILE COUNT COMPARISON:');
+      reportLines.push('-'.repeat(40));
+      reportLines.push(`📁 Input Files (PNG/JPG): ${totalInputFiles}`);
+      reportLines.push(`📝 Output Files (TXT): ${existingFiles.length}`);
+      reportLines.push(`❌ Missing/Failed: ${missingFiles.length}`);
+      reportLines.push(`✅ Success Rate: ${Math.round((existingFiles.length / totalInputFiles) * 100)}%`);
+      reportLines.push('');
+      
+      // Count errors by type (without listing individual files)
       const failedResults = processedResults.filter(r => !r.success);
       if (failedResults.length > 0) {
-        reportLines.push('PROCESSING FAILURES DETAILS:');
+        const rateLimitedCount = failedResults.filter(r => r.rateLimited).length;
+        const otherErrorsCount = failedResults.length - rateLimitedCount;
+        
+        reportLines.push('ERROR BREAKDOWN:');
         reportLines.push('-'.repeat(40));
-        failedResults.forEach((result, index) => {
-          const fileName = this.path.basename(result.inputPath);
-          const relativePath = this.path.relative(this.config.inputDir, result.inputPath);
-          reportLines.push(`${(index + 1).toString().padStart(4)}. ${relativePath}`);
-          reportLines.push(`      Error: ${result.error}`);
-          if (result.rateLimited) {
-            reportLines.push(`      Cause: Rate limiting detected`);
-          }
-        });
+        if (rateLimitedCount > 0) {
+          reportLines.push(`⏳ Rate Limited: ${rateLimitedCount} files`);
+        }
+        if (otherErrorsCount > 0) {
+          reportLines.push(`🚫 Other Errors: ${otherErrorsCount} files`);
+        }
         reportLines.push('');
       }
 
-      // Directory comparison
-      reportLines.push('DIRECTORY STRUCTURE COMPARISON:');
+      // Directory file counts only
+      reportLines.push('DIRECTORY FILE COUNTS:');
       reportLines.push('-'.repeat(40));
-      reportLines.push('Input Structure:');
-      await this.addDirectoryStructureToReport(this.config.inputDir, reportLines, '  ');
-      reportLines.push('');
-      reportLines.push('Output Structure:');
-      await this.addDirectoryStructureToReport(this.config.outputDir, reportLines, '  ');
+      const inputCount = await this.countFilesInDirectory(this.config.inputDir, ['.png', '.jpg', '.jpeg']);
+      const outputCount = await this.countFilesInDirectory(this.config.outputDir, ['.txt']);
+      reportLines.push(`📂 Input Directory: ${inputCount} image files`);
+      reportLines.push(`📂 Output Directory: ${outputCount} text files`);
       reportLines.push('');
 
-      // Merged OCR Files Report
-      await this.addMergedFilesReport(reportLines);
+      // Merged OCR Files Count
+      const mergedCount = await this.countFilesInDirectory(this.config.outputDir, ['_OCR.txt']);
+      reportLines.push('MERGED FILES:');
+      reportLines.push('-'.repeat(40));
+      reportLines.push(`📋 Merged OCR Files: ${mergedCount}`);
+      reportLines.push('');
 
       // Recommendations
       reportLines.push('RECOMMENDATIONS:');
@@ -668,6 +645,34 @@ class BatchProcessor {
 
     } catch (error) {
       console.log(this.chalk.red(`❌ Error generating verification report: ${error.message}`));
+    }
+  }
+
+  async countFilesInDirectory(directory, extensions) {
+    try {
+      if (!await this.fs.pathExists(directory)) return 0;
+      
+      let count = 0;
+      const items = await this.fs.readdir(directory, { withFileTypes: true });
+      
+      for (const item of items) {
+        if (item.isDirectory()) {
+          const subDir = this.path.join(directory, item.name);
+          count += await this.countFilesInDirectory(subDir, extensions);
+        } else {
+          const ext = this.path.extname(item.name).toLowerCase();
+          if (extensions.some(extension => 
+            item.name.toLowerCase().includes(extension.toLowerCase()) || 
+            ext === extension.toLowerCase()
+          )) {
+            count++;
+          }
+        }
+      }
+      
+      return count;
+    } catch (error) {
+      return 0;
     }
   }
 

@@ -67,6 +67,9 @@ def main():
     output_root = './2_Converted_PNGs/'
     log_file = './logs/ConversionLog.txt'
     
+    # Ensure logs directory exists
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
+    
     # Process PDFs
     process_pdfs(input_folder, output_root, log_file, max_workers=4)
     

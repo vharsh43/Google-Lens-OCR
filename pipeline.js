@@ -53,7 +53,9 @@ class PDFToTextPipeline {
   }
 
   async detectPythonCommand() {
-    const pythonCommands = ['python3', 'python'];
+    const pythonCommands = process.platform === 'win32' 
+      ? ['py', 'python', 'python3']
+      : ['python3', 'python'];
     
     for (const cmd of pythonCommands) {
       try {
@@ -286,7 +288,8 @@ class PDFToTextPipeline {
     await this.logMessage(`Starting OCR processing of ${pngCount} PNG files`);
 
     return new Promise((resolve, reject) => {
-      const ocrProcess = spawn('npm', ['start'], {
+      const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+      const ocrProcess = spawn(npmCmd, ['start'], {
         stdio: ['inherit', 'pipe', 'pipe']
       });
 
@@ -592,6 +595,8 @@ class PDFToTextPipeline {
     const logEntry = `[${timestamp}] ${message}\n`;
     
     try {
+      // Ensure logs directory exists
+      await fs.ensureDir(path.dirname(this.logFile));
       await fs.appendFile(this.logFile, logEntry);
     } catch (error) {
       console.warn(chalk.yellow(`Warning: Could not write to log file: ${error.message}`));

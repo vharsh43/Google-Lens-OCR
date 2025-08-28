@@ -41,7 +41,12 @@ class PipelineAPI {
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      let error;
+      try {
+        error = await response.json();
+      } catch (e) {
+        error = { error: `HTTP ${response.status}: ${response.statusText}` };
+      }
       throw new Error(error.error || 'Failed to set folder');
     }
 
@@ -54,7 +59,12 @@ class PipelineAPI {
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      let error;
+      try {
+        error = await response.json();
+      } catch (e) {
+        error = { error: `HTTP ${response.status}: ${response.statusText}` };
+      }
       throw new Error(error.error || 'Failed to start PDF to PNG conversion');
     }
 
@@ -78,7 +88,13 @@ class PipelineAPI {
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      let error;
+      try {
+        error = await response.json();
+      } catch (e) {
+        // If response is not JSON, create error from status
+        error = { error: `HTTP ${response.status}: ${response.statusText}` };
+      }
       throw new Error(error.error || 'Failed to start PDF to PNG conversion with files');
     }
 
@@ -91,7 +107,12 @@ class PipelineAPI {
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      let error;
+      try {
+        error = await response.json();
+      } catch (e) {
+        error = { error: `HTTP ${response.status}: ${response.statusText}` };
+      }
       throw new Error(error.error || 'Failed to start OCR processing');
     }
 

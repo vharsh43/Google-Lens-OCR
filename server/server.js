@@ -38,6 +38,20 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Error handling middleware - must be last
+app.use((err, req, res, next) => {
+  console.error('Express error:', err);
+  res.status(err.status || 500).json({ 
+    error: err.message || 'Internal server error',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+  });
+});
+
+// 404 handler for API routes
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ error: `API endpoint not found: ${req.originalUrl}` });
+});
+
 // Socket.IO connection
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);

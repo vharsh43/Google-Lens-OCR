@@ -9,15 +9,27 @@
     "process": "node src/batch-process.js",
     "test": "node src/batch-process.js --test",
     "pipeline": "node pipeline.js",
-    "pdf2png": "node run-pdf2png.js"
+    "pdf2png": "node run-pdf2png.js",
+    "dashboard": "node start-dashboard.js",
+    "dashboard:dev": "concurrently \"npm run server:dev\" \"npm run frontend:dev\"",
+    "server:dev": "cd server && npm run dev",
+    "frontend:dev": "cd dashboard && npm run dev"
   },
   "dependencies": {
+    "chalk": "^5.3.0",
     "chrome-lens-ocr": "^4.1.1",
     "fs-extra": "^11.2.0",
-    "glob": "^10.3.10",
-    "chalk": "^5.3.0"
+    "glob": "^10.3.10"
   },
-  "keywords": ["ocr", "google-lens", "bulk-processing", "text-extraction"],
+  "keywords": [
+    "ocr",
+    "google-lens",
+    "bulk-processing",
+    "text-extraction"
+  ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
 }

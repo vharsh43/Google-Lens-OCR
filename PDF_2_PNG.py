@@ -1,5 +1,7 @@
 import os
 import time
+import sys
+import argparse
 import fitz  # PyMuPDF
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -62,22 +64,56 @@ def process_pdfs(input_folder, output_root, log_file, max_workers=8):
                 log.write(msg + "\n")
                 overall_bar.update(1)
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Convert PDF files to PNG images at 300 DPI')
+    parser.add_argument('--input', '-i', 
+                       default='./1_New_File_Process_PDF_2_PNG/',
+                       help='Input folder containing PDF files (default: ./1_New_File_Process_PDF_2_PNG/)')
+    parser.add_argument('--output', '-o', 
+                       default='./2_Converted_PNGs/',
+                       help='Output root folder for PNG files (default: ./2_Converted_PNGs/)')
+    parser.add_argument('--log', '-l', 
+                       default='./logs/ConversionLog.txt',
+                       help='Log file path (default: ./logs/ConversionLog.txt)')
+    parser.add_argument('--workers', '-w', 
+                       type=int, default=4,
+                       help='Number of worker processes (default: 4)')
+    return parser.parse_args()
+
 def main():
-    input_folder = './1_New_File_Process_PDF_2_PNG/'
-    output_root = './2_Converted_PNGs/'
-    log_file = './logs/ConversionLog.txt'
+    # Parse command-line arguments
+    args = parse_arguments()
+    
+    input_folder = args.input
+    output_root = args.output
+    log_file = args.log
+    max_workers = args.workers
+    
+    print(f"📁 Input folder: {os.path.abspath(input_folder)}")
+    print(f"📂 Output folder: {os.path.abspath(output_root)}")
+    print(f"📝 Log file: {os.path.abspath(log_file)}")
+    print(f"⚙️  Workers: {max_workers}")
+    
+    # Validate input folder exists
+    if not os.path.exists(input_folder):
+        print(f"❌ Error: Input folder does not exist: {input_folder}")
+        sys.exit(1)
     
     # Ensure logs directory exists
     os.makedirs(os.path.dirname(log_file), exist_ok=True)
     
+    # Ensure output directory exists
+    os.makedirs(output_root, exist_ok=True)
+    
     # Process PDFs
-    process_pdfs(input_folder, output_root, log_file, max_workers=4)
+    process_pdfs(input_folder, output_root, log_file, max_workers=max_workers)
     
     # Create completion flag file for pipeline integration
     completion_file = 'pdf_conversion_complete.flag'
     with open(completion_file, 'w') as f:
         f.write(f"PDF conversion completed at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"Output directory: {output_root}\n")
+        f.write(f"Input directory: {os.path.abspath(input_folder)}\n")
+        f.write(f"Output directory: {os.path.abspath(output_root)}\n")
     
     print(f"✅ Conversion complete! Flag created: {completion_file}")
 

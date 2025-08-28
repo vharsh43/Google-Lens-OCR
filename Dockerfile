@@ -45,6 +45,7 @@ FROM python:3.11-slim AS runtime
 RUN apt-get update && apt-get install -y \
     curl \
     ca-certificates \
+    dos2unix \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -83,7 +84,8 @@ ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
 
 # Copy and set up entrypoint script first (as root)
 COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh && \
+    dos2unix /docker-entrypoint.sh 2>/dev/null || true
 
 # Create non-root user for security
 RUN useradd -r -s /bin/false ocruser && \

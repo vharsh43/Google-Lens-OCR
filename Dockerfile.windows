@@ -94,10 +94,15 @@ RUN npm ci --only=production
 WORKDIR /app/dashboard
 RUN npm ci
 
-# Stage 3: Dashboard Builder - Build React dashboard
-FROM node-base AS dashboard-builder
+# Stage 3: Dashboard Builder - Build React dashboard  
+FROM node:18-slim AS dashboard-builder
 
 WORKDIR /app/dashboard
+# Install dependencies fresh for reliable build
+COPY dashboard/package*.json ./
+RUN npm ci
+
+# Copy source and build
 COPY dashboard/ .
 RUN npm run build
 

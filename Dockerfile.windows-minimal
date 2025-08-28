@@ -43,9 +43,14 @@ WORKDIR /app/dashboard
 RUN npm ci
 
 # Stage 3: Dashboard Builder - Build React dashboard
-FROM node-base AS dashboard-builder
+FROM node:18-slim AS dashboard-builder
 
 WORKDIR /app/dashboard
+# Copy package files and install dependencies fresh for build
+COPY dashboard/package*.json ./
+RUN npm ci
+
+# Copy source and build
 COPY dashboard/ .
 RUN npm run build
 

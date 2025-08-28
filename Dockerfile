@@ -19,9 +19,9 @@ WORKDIR /app/dashboard
 COPY dashboard/package*.json ./
 RUN npm install
 
-# Copy dashboard source and build with npx (bypasses .bin symlink issues)
+# Copy dashboard source and build by directly invoking vite
 COPY dashboard/ .
-RUN npx vite build
+RUN node node_modules/vite/bin/vite.js build
 
 # Stage 3: Server Dependencies - Install server dependencies
 FROM node:18-slim AS server-deps

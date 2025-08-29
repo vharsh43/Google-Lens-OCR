@@ -69,7 +69,7 @@ export const config = {
     encoding: 'utf8',
     
     // Merged file options
-    generateMergedFiles: true,        // Generate merged OCR files for each folder
+    generateMergedFiles: false,       // Generate merged OCR files for each folder (disabled by default - use npm run merge)
     mergedFileSuffix: '_OCR'          // Suffix for merged files (e.g., foldername_OCR.txt)
   },
   

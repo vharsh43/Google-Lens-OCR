@@ -1,91 +1,49 @@
 # Google Lens OCR Pipeline
 
-Convert PDFs to text using high-quality PNG conversion (300 DPI) and Google Lens OCR.
+Convert PDFs to text using Google Lens OCR.
 
 ## Quick Start
 
 ### Prerequisites
 - **Node.js 16+**
 - **Python 3.6+** 
-- **Internet connection** (for Google Lens OCR)
+- **Internet connection**
 
 ### Installation
 ```bash
-# Install Node dependencies
 npm install
-
-# Install Python dependencies
 pip install PyMuPDF tqdm
 ```
 
 ### Usage
 
-#### Full Pipeline (PDF → PNG → Text)
 1. Place PDF files in `1_New_File_Process_PDF_2_PNG/`
 2. Run: `npm run pipeline`
 3. Find text files in `3_OCR_TXT_Files/`
 
-#### Individual Steps
-- **PDF to PNG only:** `npm run pdf2png`
-- **OCR only:** `npm start` (processes PNGs in `2_Converted_PNGs/`)
-
-### Folder Structure
-```
-Google-Lens-OCR/
-├── 1_New_File_Process_PDF_2_PNG/    # Input PDFs
-├── 2_Converted_PNGs/                # Generated PNGs (300 DPI)
-├── 3_OCR_TXT_Files/                 # Extracted text with merged files
-├── src/                             # Source code
-├── PDF_2_PNG.py                     # PDF to PNG converter
-├── pipeline.js                      # Main pipeline script
-└── package.json
-```
-
-### Scripts
+### Commands
 | Command | Description |
 |---------|-------------|
 | `npm run pipeline` | Complete PDF to text conversion |
 | `npm run pdf2png` | Convert PDFs to PNGs only |
 | `npm start` | Run OCR on existing PNGs |
+| `npm run merge` | Merge txt files into `_OCR.txt` files |
 
-### Configuration
-Edit `src/config.js` to adjust:
-- Batch size and processing delays
-- OCR retry settings and timeouts
-- Output file options
-- Rate limiting parameters
-
-### Features
-- **High Quality:** 300 DPI PNG conversion
-- **Smart Processing:** Automatic rate limiting and retry logic
-- **Folder Structure Preservation:** Maintains original PDF organization
-- **Merged Files:** Generates consolidated `_OCR.txt` files per folder
-- **Progress Tracking:** Real-time progress bars and detailed logging
-- **Error Handling:** Robust error recovery with exponential backoff
-
-### Troubleshooting
-
-**Python Issues:**
-```bash
-# Check Python installation
-python3 --version
-pip install PyMuPDF tqdm
+### Folder Structure
+```
+1_New_File_Process_PDF_2_PNG/    # Input PDFs
+2_Converted_PNGs/                # Generated PNGs (300 DPI)
+3_OCR_TXT_Files/                 # Extracted text files
 ```
 
-**Rate Limiting:**
-- The system automatically handles Google API rate limits
-- Adjust delays in `src/config.js` if needed
+### New Workflow (Separate Merging)
 
-**No Output Files:**
-- Verify internet connection
-- Check PDF files are in correct input folder
-- Review console output for specific errors
+**Before:**
+- `npm start` → OCR + automatic merging
 
-### Performance Tips
-- Process large batches during off-peak hours
-- Adjust `maxConcurrency` in config for your system
-- Monitor rate limiting messages and adjust delays accordingly
+**Now:**
+- `npm start` → OCR only
+- Manually delete unwanted txt files
+- `npm run merge` → Create merged `_OCR.txt` files
 
----
-
-For detailed workflow information, see `PIPELINE_GUIDE.md`
+This allows you to clean up individual txt files before merging.

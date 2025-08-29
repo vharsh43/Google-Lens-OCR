@@ -1,0 +1,53 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Processing folders - keep the directories but ignore their contents
+1_New_File_Process_PDF_2_PNG/*
+!1_New_File_Process_PDF_2_PNG/.gitkeep
+
+2_Converted_PNGs/*
+!2_Converted_PNGs/.gitkeep
+
+3_OCR_TXT_Files/*
+!3_OCR_TXT_Files/.gitkeep
+
+# Log files and reports
+logs/
+*.log
+PipelineSummary.txt
+pdf_conversion_complete.flag
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp

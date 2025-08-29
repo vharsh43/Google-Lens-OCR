@@ -1,3 +1,12 @@
+1) Convert PDFs to PNGs only
+npm run pdf2png
+
+2) Run OCR on existing PNGs
+npm start
+
+3) Merge txt files into `_OCR.txt` files
+npm run merge
+
 # Google Lens OCR Pipeline
 
 Convert PDFs to text using Google Lens OCR.

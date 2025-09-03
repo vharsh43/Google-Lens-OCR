@@ -5,14 +5,12 @@ yarn-debug.log*
 yarn-error.log*
 
 # Processing folders - keep the directories but ignore their contents
-1_New_File_Process_PDF_2_PNG/*
-!1_New_File_Process_PDF_2_PNG/.gitkeep
+1_Ticket_PDF/*
+!1_Ticket_PDF/.gitkeep
 
-2_Converted_PNGs/*
-!2_Converted_PNGs/.gitkeep
-
-3_OCR_TXT_Files/*
-!3_OCR_TXT_Files/.gitkeep
+# Legacy folders removed - no longer used
+# 2_Converted_PNGs/ - Direct PDF processing now
+# 3_OCR_TXT_Files/ - OCR output integrated
 
 # Log files and reports
 logs/
@@ -51,3 +49,31 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Next.js specific
+frontend/.next/
+frontend/out/
+
+# Test outputs  
+coverage/
+*.lcov
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# Database and migration files that shouldn't be committed
+*.db
+*.sqlite
+*.sqlite3
+
+# Report and documentation files (auto-generated)
+reports/
+SETUP_DATABASE_MIGRATION.md

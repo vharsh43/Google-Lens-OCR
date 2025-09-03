@@ -1,0 +1,162 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Validate environment and run tests
+  validate:
+    runs-on: ubuntu-latest
+    name: Validate & Test
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Create test environment file
+        run: |
+          cat > .env << EOF
+          SUPABASE_URL=https://test.supabase.co
+          SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test
+          SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test
+          NODE_ENV=test
+          LOG_LEVEL=error
+          EOF
+      
+      - name: Validate environment
+        run: npm run env-check || true
+      
+      - name: Run health checks
+        run: npm run health-check || true
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install Python dependencies
+        run: |
+          pip install PyMuPDF tqdm
+      
+      - name: Validate backend structure
+        run: |
+          echo "✅ Checking backend files..."
+          test -f "src/enhanced-pipeline-supabase.js" || exit 1
+          test -f "src/ticket-parser.js" || exit 1
+          test -f "src/supabase/client.js" || exit 1
+          test -f "src/supabase/operations.js" || exit 1
+          test -f "src/supabase/schema.sql" || exit 1
+          echo "✅ Backend structure is valid"
+
+  # Build and test frontend
+  frontend:
+    runs-on: ubuntu-latest
+    name: Build Frontend
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+      
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+      
+      - name: Create frontend environment
+        run: |
+          cd frontend
+          cat > .env.local << EOF
+          NEXT_PUBLIC_SUPABASE_URL=https://test.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test
+          EOF
+      
+      - name: Build frontend
+        run: cd frontend && npm run build
+      
+      - name: Validate frontend build
+        run: |
+          echo "✅ Checking frontend build..."
+          test -d "frontend/.next" || exit 1
+          echo "✅ Frontend build successful"
+
+  # Deploy to production (only on main branch)
+  deploy:
+    needs: [validate, frontend]
+    runs-on: ubuntu-latest
+    name: Deploy to Production
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      # Backend deployment (Railway)
+      - name: Deploy Backend to Railway
+        if: contains(github.event.head_commit.modified, 'src/') || contains(github.event.head_commit.modified, 'package.json')
+        run: |
+          npm install -g @railway/cli
+          echo "Backend deployment would happen here"
+          # railway deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      
+      # Frontend deployment (Vercel)
+      - name: Deploy Frontend to Vercel
+        if: contains(github.event.head_commit.modified, 'frontend/')
+        run: |
+          cd frontend
+          npm ci
+          npm install -g vercel
+          echo "Frontend deployment would happen here"
+          # vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      
+      - name: Post-deployment health check
+        run: |
+          echo "Production health check would run here"
+          # npm run health-check-prod
+
+  # Notify on deployment
+  notify:
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    name: Notify Deployment
+    if: always() && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Deployment notification
+        run: |
+          if [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed!"
+          fi

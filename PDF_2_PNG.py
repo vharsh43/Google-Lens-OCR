@@ -63,7 +63,7 @@ def process_pdfs(input_folder, output_root, log_file, max_workers=8):
                 overall_bar.update(1)
 
 def main():
-    input_folder = './1_New_File_Process_PDF_2_PNG/'
+    input_folder = './1_Ticket_PDF/'
     output_root = './2_Converted_PNGs/'
     log_file = './logs/ConversionLog.txt'
     
